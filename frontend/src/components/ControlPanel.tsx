@@ -1,0 +1,261 @@
+import { useState } from 'react'
+import type { SimulationParams, SimulationTrigger } from '../types/sim'
+
+type Props = {
+  params: SimulationParams
+  vehicleIds: string[]
+  followerCount: number
+  onUpdateParams: (next: Partial<SimulationParams>) => void
+  onFollowerCountChange: (count: number) => void
+  onThrottleBrake: (throttle: number, brake: number) => void
+  onTrigger: (kind: SimulationTrigger) => void
+  onSwap: (idA: string, idB: string) => void
+}
+
+const MS_TO_KMH = 3.6
+const KMH_TO_MS = 1 / MS_TO_KMH
+
+type Tab = 'network' | 'scenarios' | 'maneuvers'
+
+const presets = [
+  {
+    label: 'Nominal',
+    desc: 'Stable baseline',
+    params: { latencyMs: 10, packetLossPercent: 0.2, bandwidthMbps: 800, timeHeadway: 1 },
+  },
+  {
+    label: 'Congested',
+    desc: 'High-density network',
+    params: { latencyMs: 16, packetLossPercent: 3, bandwidthMbps: 180, timeHeadway: 1.3 },
+  },
+  {
+    label: 'Stress Test',
+    desc: 'ACC fallback mode',
+    params: { latencyMs: 20, packetLossPercent: 12, bandwidthMbps: 80, timeHeadway: 1.6 },
+  },
+]
+
+function SliderRow({
+  label,
+  min, max, step = 1, value, format, onChange, disabled,
+}: {
+  label: string; min: number; max: number; step?: number
+  value: number; format: (v: number) => string; onChange: (v: number) => void
+  disabled?: boolean
+}) {
+  return (
+    <div className="ck-slider" style={disabled ? { opacity: 0.38, pointerEvents: 'none' } : undefined}>
+      <div className="ck-slider-head">
+        <span className="ck-slider-label">{label}</span>
+        <span className="ck-slider-value">{format(value)}</span>
+      </div>
+      <input
+        type="range" min={min} max={max} step={step} value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="ck-range"
+        disabled={disabled}
+      />
+    </div>
+  )
+}
+
+export function ControlPanel({
+  params, vehicleIds, followerCount,
+  onUpdateParams, onFollowerCountChange, onThrottleBrake, onTrigger, onSwap,
+}: Props) {
+  const [tab, setTab] = useState<Tab>('network')
+  const [firstId, setFirstId] = useState('')
+  const [secondId, setSecondId] = useState('')
+  const targetSpeedKmh = Math.round(params.targetSpeed * MS_TO_KMH)
+  const selA = firstId && vehicleIds.includes(firstId) ? firstId : (vehicleIds[0] ?? '')
+  const selB = secondId && vehicleIds.includes(secondId) ? secondId : (vehicleIds[1] ?? '')
+
+  const tabs: { id: Tab; label: string }[] = [
+    { id: 'network', label: '5G & CACC' },
+    { id: 'scenarios', label: 'Scenarios' },
+    { id: 'maneuvers', label: 'Maneuvers' },
+  ]
+
+  return (
+    <aside className="ck-panel">
+      {/* Panel header */}
+      <div className="ck-panel-header">
+        <div className="ck-panel-dot" />
+        <div>
+          <div className="ck-panel-title">Control Center</div>
+          <div className="ck-panel-sub">Network & vehicle behaviour</div>
+        </div>
+      </div>
+
+      {/* Tab bar */}
+      <div className="ck-tabs">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            className={`ck-tab ${tab === t.id ? 'active' : ''}`}
+            onClick={() => setTab(t.id)}
+            type="button"
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      <div className="ck-tab-content">
+
+        {/* ── Tab 1: 5G & CACC ── */}
+        {tab === 'network' && (
+          <div className="ck-form-group">
+
+            {/* Section: 5G Channel Model */}
+            <div className="ck-group-title">5G Channel Model</div>
+
+            {/* Dynamic Path Loss Toggle (3GPP) */}
+            <div className="ck-toggle-row">
+              <div>
+                <span className="ck-slider-label">Dynamic Path Loss (3GPP)</span>
+                <div className="ck-panel-sub" style={{ fontSize: '0.68rem', marginTop: '0.15rem' }}>
+                  Per-vehicle RSU distance-based loss
+                </div>
+              </div>
+              <button
+                type="button"
+                className={`ck-toggle ${params.dynamicPathLoss ? 'active' : ''}`}
+                onClick={() => onUpdateParams({ dynamicPathLoss: !params.dynamicPathLoss })}
+                aria-pressed={params.dynamicPathLoss}
+                id="dynamic-path-loss-toggle"
+              >
+                <span className="ck-toggle-thumb" />
+              </button>
+            </div>
+
+            <SliderRow label="Latency" min={5} max={20} value={params.latencyMs}
+              format={(v) => `${v} ms`} onChange={(v) => onUpdateParams({ latencyMs: v })} />
+            <SliderRow
+              label="Packet Loss" min={0} max={30} step={0.5} value={params.packetLossPercent}
+              format={(v) => `${v.toFixed(1)}%`} onChange={(v) => onUpdateParams({ packetLossPercent: v })}
+              disabled={params.dynamicPathLoss}
+            />
+            <SliderRow label="Bandwidth" min={50} max={1000} step={10} value={params.bandwidthMbps}
+              format={(v) => `${v} Mbps`} onChange={(v) => onUpdateParams({ bandwidthMbps: v })} />
+
+            <div className="ck-divider" />
+
+            {/* Section: CACC Parameters */}
+            <div className="ck-group-title">CACC Parameters</div>
+
+            {/* V2V Topology Dropdown */}
+            <div className="ck-slider">
+              <div className="ck-slider-head">
+                <span className="ck-slider-label">V2V Topology</span>
+                <span className="ck-slider-value">{params.v2vTopology}</span>
+              </div>
+              <select
+                className="ck-select"
+                value={params.v2vTopology}
+                onChange={(e) => onUpdateParams({ v2vTopology: e.target.value as 'PF' | 'L2A' | 'Hybrid' })}
+                id="v2v-topology-select"
+              >
+                <option value="Hybrid">Hybrid (Default)</option>
+                <option value="PF">Predecessor Following (PF)</option>
+                <option value="L2A">Leader-to-All (L2A)</option>
+              </select>
+            </div>
+
+            <SliderRow label="Target Speed" min={10} max={120} step={5} value={targetSpeedKmh}
+              format={(v) => `${v} km/h`} onChange={(v) => onUpdateParams({ targetSpeed: v * KMH_TO_MS })} />
+            <SliderRow label="Time Headway" min={0.5} max={2} step={0.1} value={params.timeHeadway}
+              format={(v) => `${v.toFixed(1)} s`} onChange={(v) => onUpdateParams({ timeHeadway: v })} />
+            <SliderRow label="Platoon Size" min={1} max={10} value={followerCount}
+              format={(v) => `${v} follower${v > 1 ? 's' : ''}`} onChange={onFollowerCountChange} />
+          </div>
+        )}
+
+        {/* ── Tab 2: Scenarios ── */}
+        {tab === 'scenarios' && (
+          <div className="ck-form-group">
+            <div className="ck-group-title">Network Presets</div>
+            <div className="ck-preset-grid">
+              {presets.map((p) => (
+                <button key={p.label} className="ck-preset-btn" type="button"
+                  onClick={() => onUpdateParams(p.params)}>
+                  <span className="ck-preset-label">{p.label}</span>
+                  <span className="ck-preset-desc">{p.desc}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="ck-divider" />
+            <div className="ck-group-title">Live Disruptions</div>
+            <div className="ck-btn-stack">
+              <button className="ck-btn ck-btn-ghost" type="button" onClick={() => onTrigger('latencySpike')}>
+                Inject Latency Spike
+              </button>
+              <button className="ck-btn ck-btn-ghost" type="button" onClick={() => onTrigger('packetDrop')}>
+                Simulate Packet Drop
+              </button>
+              <button className="ck-btn ck-btn-danger" type="button" onClick={() => onTrigger('humanBrake')}>
+                Trigger Human Braking
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Tab 3: Maneuvers ── */}
+        {tab === 'maneuvers' && (
+          <div className="ck-form-group">
+            <div className="ck-group-title">Manual Override</div>
+            <div className="ck-manual-grid">
+              <button className="ck-btn ck-btn-accel"
+                onMouseDown={() => onThrottleBrake(0.7, 0)}
+                onMouseUp={() => onThrottleBrake(0.4, 0)}
+                onMouseLeave={() => onThrottleBrake(0.4, 0)}
+                type="button">
+                Throttle
+              </button>
+              <button className="ck-btn ck-btn-brake"
+                onMouseDown={() => onThrottleBrake(0.05, 0.7)}
+                onMouseUp={() => onThrottleBrake(0.4, 0)}
+                onMouseLeave={() => onThrottleBrake(0.4, 0)}
+                type="button">
+                Brake
+              </button>
+            </div>
+
+            <div className="ck-divider" />
+            <div className="ck-group-title">Vehicle Transfer</div>
+            <div className="ck-form-group">
+              <div className="ck-select-row">
+                <span className="ck-select-label">Vehicle A</span>
+                <select className="ck-select" value={selA} onChange={(e) => setFirstId(e.target.value)}>
+                  {vehicleIds.map((id) => {
+                    const platoon = id.startsWith('b_') ? 'B' : 'A'
+                    return <option key={`a-${id}`} value={id}>[{platoon}] {id.replace('b_', '').toUpperCase()}</option>
+                  })}
+                </select>
+              </div>
+              <div className="ck-select-row">
+                <span className="ck-select-label">Vehicle B</span>
+                <select className="ck-select" value={selB} onChange={(e) => setSecondId(e.target.value)}>
+                  {vehicleIds.map((id) => {
+                    const platoon = id.startsWith('b_') ? 'B' : 'A'
+                    return <option key={`b-${id}`} value={id}>[{platoon}] {id.replace('b_', '').toUpperCase()}</option>
+                  })}
+                </select>
+              </div>
+              <button
+                className="ck-btn ck-btn-primary"
+                disabled={!selA || !selB || selA === selB}
+                onClick={() => onSwap(selA, selB)}
+                type="button"
+              >
+                Initiate Transfer
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </aside>
+  )
+}

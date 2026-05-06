@@ -1,0 +1,26 @@
+{
+  "name": "v2v-platooning-simulator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Deployable V2V 5G platooning simulation app with React frontend and Socket.IO backend.",
+  "type": "commonjs",
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build",
+    "lint": "npm --prefix frontend run lint",
+    "start": "npm --prefix backend run start",
+    "preview": "npm --prefix frontend run preview",
+    "check": "npm run lint && npm run build"
+  },
+  "keywords": [
+    "platooning",
+    "v2v",
+    "5g",
+    "simulation",
+    "cacc"
+  ],
+  "author": "",
+  "license": "ISC"
+}
