@@ -10,6 +10,7 @@ type LogEntry = {
   maxSpacingErrorM: number
   ssi: number
   controlMode: string
+  channelBandwidthHz: number
 }
 
 export function useDataLogger(currentState: SimulationState | null) {
@@ -48,6 +49,7 @@ export function useDataLogger(currentState: SimulationState | null) {
       'Max Spacing Error (m)',
       'String Stability Index (SSI)',
       'Control Mode',
+      'Channel Bandwidth (Hz)',
     ]
 
     const rows = logs.map((log) => [
@@ -59,6 +61,7 @@ export function useDataLogger(currentState: SimulationState | null) {
       log.maxSpacingErrorM.toFixed(3),
       log.ssi.toFixed(4),
       log.controlMode,
+      log.channelBandwidthHz.toFixed(0),
     ])
 
     const csvContent = [
@@ -105,10 +108,11 @@ export function useDataLogger(currentState: SimulationState | null) {
         e2eDelayMs: st.telemetry.endToEndDelayMs,
         packetLossPercent: st.params.packetLossPercent,
         leaderSpeedMs: leader ? leader.speed : 0,
-        avgPlatoonSpeedMs: st.telemetry.averagePlatoonSpeedKmh / 3.6,
+        avgPlatoonSpeedMs: st.telemetry.averagePlatoonSpeedMs,
         maxSpacingErrorM: st.telemetry.maxSpacingError,
         ssi: st.telemetry.stringStabilityIndex,
         controlMode: st.telemetry.controlMode,
+        channelBandwidthHz: st.params.channelBandwidthHz,
       })
       
       // Update UI timer strictly every 1s worth of intervals to avoid massive re-renders

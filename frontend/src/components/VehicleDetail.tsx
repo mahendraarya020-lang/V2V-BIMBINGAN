@@ -1,4 +1,5 @@
 import type { VehicleState } from '../types/sim'
+import { formatSpeedMs } from '../utils/units'
 
 type Props = {
   vehicle: VehicleState | null
@@ -17,7 +18,6 @@ export function VehicleDetail({ vehicle }: Props) {
   const platoon = vehicle.id.startsWith('b_') ? 'B' : 'A'
   const isLeader = vehicle.id === 'leader' || vehicle.id === 'b_leader'
   const role = isLeader ? 'Leader' : 'Follower'
-  const speedKmh = vehicle.speed * 3.6
   const headingDeg = ((vehicle.heading ?? 0) * 180 / Math.PI).toFixed(1)
   const wyVal = vehicle.wy ?? vehicle.y
 
@@ -34,16 +34,12 @@ export function VehicleDetail({ vehicle }: Props) {
       </div>
       <ul className="vehicle-detail-grid">
         <li>
-          <span>Speed</span>
-          <strong className={vehicle.crashed ? 'telemetry-bad' : ''}>{speedKmh.toFixed(2)} km/h</strong>
+          <span>Speed (v)</span>
+          <strong className={vehicle.crashed ? 'telemetry-bad' : ''}>{formatSpeedMs(vehicle.speed)}</strong>
         </li>
         <li>
-          <span>Speed (m/s)</span>
-          <strong>{vehicle.speed.toFixed(2)} m/s</strong>
-        </li>
-        <li>
-          <span>Acceleration</span>
-          <strong>{vehicle.accel.toFixed(3)} m/s2</strong>
+          <span>Acceleration (a)</span>
+          <strong>{vehicle.accel.toFixed(3)} m/s²</strong>
         </li>
         <li>
           <span>Brake</span>
@@ -61,7 +57,7 @@ export function VehicleDetail({ vehicle }: Props) {
         </li>
         <li>
           <span>Heading</span>
-          <strong>{headingDeg} deg</strong>
+          <strong>{headingDeg}°</strong>
         </li>
         <li>
           <span>Target Lane</span>

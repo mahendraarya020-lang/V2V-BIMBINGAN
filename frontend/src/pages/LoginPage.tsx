@@ -105,7 +105,7 @@ export function LoginPage() {
         {/* Mini telemetry mock ────────────────────────────────────────── */}
         <div className="landing-telemetry-row">
           {[
-            { label: 'Speed', value: '90 km/h' },
+            { label: 'Speed', value: '25 m/s' },
             { label: 'Spacing Error', value: '±0.12 m' },
             { label: 'SSI', value: '0.974' },
             { label: 'Latency', value: '2.1 ms' },

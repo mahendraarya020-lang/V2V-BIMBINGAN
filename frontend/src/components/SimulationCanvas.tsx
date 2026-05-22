@@ -1,4 +1,4 @@
-﻿import { animate } from 'animejs'
+import { animate } from 'animejs'
 import { useEffect, useRef } from 'react'
 import type { MouseEvent } from 'react'
 import type { VehicleState } from '../types/sim'
@@ -10,7 +10,7 @@ type Props = {
   onVehicleClick?: (id: string) => void
   pendingSwap?: { idA: string; idB: string; triggeredAt: number } | null
   running: boolean
-  avgSpeedKmh?: number // Optional since it's newly added, provide a default internally
+  avgSpeedMs?: number
 }
 
 const PX_PER_METER = 4
@@ -38,7 +38,7 @@ export function SimulationCanvas({
   onVehicleClick,
   pendingSwap,
   running,
-  avgSpeedKmh = 0,
+  avgSpeedMs = 0,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
@@ -46,15 +46,15 @@ export function SimulationCanvas({
   const v2vLinkRef = useRef(v2vLink)
   const selectedIdRef = useRef(selectedVehicleId)
   const runningRef = useRef(running)
-  const avgSpeedKmhRef = useRef(avgSpeedKmh)
+  const avgSpeedMsRef = useRef(avgSpeedMs)
 
   useEffect(() => {
     vehiclesRef.current = vehicles
     v2vLinkRef.current = v2vLink
     selectedIdRef.current = selectedVehicleId
     runningRef.current = running
-    avgSpeedKmhRef.current = avgSpeedKmh
-  }, [vehicles, v2vLink, selectedVehicleId, running, avgSpeedKmh])
+    avgSpeedMsRef.current = avgSpeedMs
+  }, [vehicles, v2vLink, selectedVehicleId, running, avgSpeedMs])
 
   // -- Per-vehicle animated display values ----------------------------------
   // X is interpolated on the frontend for smooth 60 fps motion between 20 Hz ticks.
@@ -192,7 +192,7 @@ export function SimulationCanvas({
         
         // Update road scroll offset based on average platoon speed
         if (runningRef.current) {
-           const speedMs = avgSpeedKmhRef.current / 3.6
+           const speedMs = avgSpeedMsRef.current
            // Scroll backwards
            roadScrollOffsetRef.current -= (speedMs * PX_PER_METER * dtStr)
         }
@@ -206,6 +206,47 @@ export function SimulationCanvas({
         const worldToScreenX = (xMeters: number) =>
           (xMeters - cameraX) * PX_PER_METER + WORLD_OFFSET_X
 
+        const screenToWorldX = (sx: number) =>
+          (sx - WORLD_OFFSET_X) / PX_PER_METER + cameraX
+
+        // -- The Warp Function -------------------------------------------------
+        const applyCurve = (sx: number, sy: number) => {
+          const worldX = screenToWorldX(sx);
+          const cycle = 4000;
+          // Ensure positive modulo even for negative X
+          const localX = ((worldX % cycle) + cycle) % cycle; 
+          let offsetY = 0;
+          let angle = 0;
+          const shiftAmount = 250; // How far the road shifts laterally (pixels)
+          const curveLength = 600; // Length of the curve (meters/units)
+
+          if (localX < 1400) {
+              // Segment 1: Straight road
+              offsetY = 0;
+              angle = 0;
+          } else if (localX < 1400 + curveLength) {
+              // Segment 2: Smooth Curve Left
+              const t = (localX - 1400) / curveLength;
+              // Cosine interpolation for smooth S-curve
+              offsetY = (1 - Math.cos(t * Math.PI)) / 2 * shiftAmount; 
+              // Derivative for precise vehicle rotation
+              const dy_dx = (shiftAmount / 2) * (Math.PI / curveLength) * Math.sin(t * Math.PI);
+              angle = Math.atan(dy_dx);
+          } else if (localX < 3400) {
+              // Segment 3: Straight road (shifted)
+              offsetY = shiftAmount;
+              angle = 0;
+          } else {
+              // Segment 4: Smooth Curve Right (back to origin)
+              const t = (localX - 3400) / curveLength;
+              offsetY = shiftAmount - ((1 - Math.cos(t * Math.PI)) / 2 * shiftAmount);
+              const dy_dx = -(shiftAmount / 2) * (Math.PI / curveLength) * Math.sin(t * Math.PI);
+              angle = Math.atan(dy_dx);
+          }
+
+          return { x: sx, y: sy + offsetY, angle }
+        }
+
         // -- Clear + sky/ground ------------------------------------------------
         ctx.clearRect(0, 0, w, h)
         const bg = ctx.createLinearGradient(0, 0, 0, h)
@@ -218,27 +259,41 @@ export function SimulationCanvas({
         const roadTop = h / 2 - 80
         const roadHeight = 160
 
-        // -- Road surface ------------------------------------------------------
-        ctx.fillStyle = 'rgba(0,0,0,0.3)'
-        ctx.fillRect(0, roadTop + roadHeight + 18, w, 20)
-        ctx.fillStyle = 'rgba(255,255,255,0.045)'
-        ctx.fillRect(0, roadTop - 18, w, 18)
-        ctx.fillRect(0, roadTop + roadHeight, w, 18)
-
-        const asphalt = ctx.createLinearGradient(0, roadTop, 0, roadTop + roadHeight)
+        // -- Road surface (Curved shape) ---------------------------------------
+        const asphalt = ctx.createLinearGradient(0, roadTop - 300, 0, roadTop + roadHeight + 300)
         asphalt.addColorStop(0, '#18181b')
         asphalt.addColorStop(0.5, '#111113')
         asphalt.addColorStop(1, '#0f0f10')
         ctx.fillStyle = asphalt
-        ctx.fillRect(0, roadTop, w, roadHeight)
+        ctx.beginPath()
+        for (let x = 0; x <= w + 50; x += 50) {
+          const mapped = applyCurve(x, roadTop)
+          if (x === 0) ctx.moveTo(mapped.x, mapped.y)
+          else ctx.lineTo(mapped.x, mapped.y)
+        }
+        for (let x = w + 50; x >= 0; x -= 50) {
+          const mapped = applyCurve(x, roadTop + roadHeight)
+          ctx.lineTo(mapped.x, mapped.y)
+        }
+        ctx.fill()
 
         // Edge stripes
         ctx.strokeStyle = 'rgba(255,255,255,0.12)'
         ctx.lineWidth = 1
         ctx.setLineDash([])
         ctx.beginPath()
-        ctx.moveTo(0, roadTop + 5); ctx.lineTo(w, roadTop + 5)
-        ctx.moveTo(0, roadTop + roadHeight - 5); ctx.lineTo(w, roadTop + roadHeight - 5)
+        for (let x = 0; x <= w + 50; x += 50) {
+          const mapped = applyCurve(x, roadTop + 5)
+          if (x === 0) ctx.moveTo(mapped.x, mapped.y)
+          else ctx.lineTo(mapped.x, mapped.y)
+        }
+        ctx.stroke()
+        ctx.beginPath()
+        for (let x = 0; x <= w + 50; x += 50) {
+          const mapped = applyCurve(x, roadTop + roadHeight - 5)
+          if (x === 0) ctx.moveTo(mapped.x, mapped.y)
+          else ctx.lineTo(mapped.x, mapped.y)
+        }
         ctx.stroke()
 
         // Lane dividers (scrolling dashed lines)
@@ -248,7 +303,13 @@ export function SimulationCanvas({
         ctx.lineDashOffset = -roadScrollOffsetRef.current
         for (let l = 1; l < laneCount; l++) {
           const ly = roadTop + (roadHeight / laneCount) * l
-          ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(w, ly); ctx.stroke()
+          ctx.beginPath()
+          for (let x = 0; x <= w + 50; x += 50) {
+            const mapped = applyCurve(x, ly)
+            if (x === 0) ctx.moveTo(mapped.x, mapped.y)
+            else ctx.lineTo(mapped.x, mapped.y)
+          }
+          ctx.stroke()
         }
         ctx.setLineDash([])
         ctx.lineDashOffset = 0
@@ -268,11 +329,14 @@ export function SimulationCanvas({
           ctx.beginPath()
           ctx.strokeStyle = 'rgba(255,255,255,0.12)'
           ctx.lineWidth = 1
-          ctx.moveTo(x, roadTop + roadHeight + 2)
-          ctx.lineTo(x, roadTop + roadHeight + 10)
+          const map1 = applyCurve(x, roadTop + roadHeight + 2)
+          const map2 = applyCurve(x, roadTop + roadHeight + 10)
+          ctx.moveTo(map1.x, map1.y)
+          ctx.lineTo(map2.x, map2.y)
           ctx.stroke()
           const meterLabel = Math.round(cameraX + ((x - WORLD_OFFSET_X) / PX_PER_METER))
-          ctx.fillText(`${meterLabel}m`, x - 16, roadTop + roadHeight + 22)
+          const labelMap = applyCurve(x - 16, roadTop + roadHeight + 22)
+          ctx.fillText(`${meterLabel}m`, labelMap.x, labelMap.y)
         }
 
         // -- RSU infrastructure (world-space, stationary every 500m) --------------
@@ -291,16 +355,22 @@ export function SimulationCanvas({
           if (sx < -100 || sx > w + 100) continue
           ctx.strokeStyle = 'rgba(255,255,255,0.16)'
           ctx.lineWidth = 2
-          ctx.beginPath(); ctx.moveTo(sx, roadTop - 6); ctx.lineTo(sx, roadTop - 58); ctx.stroke()
+          
+          const baseMap = applyCurve(sx, roadTop - 6)
+          const topMap = applyCurve(sx, roadTop - 58)
+          const nodeMap = applyCurve(sx, rsuScreenY)
+          const textMap = applyCurve(sx - 11, roadTop - 74)
+
+          ctx.beginPath(); ctx.moveTo(baseMap.x, baseMap.y); ctx.lineTo(topMap.x, topMap.y); ctx.stroke()
           ctx.fillStyle = '#818cf8'
-          ctx.beginPath(); ctx.arc(sx, rsuScreenY, 8, 0, Math.PI * 2); ctx.fill()
+          ctx.beginPath(); ctx.arc(nodeMap.x, nodeMap.y, 8, 0, Math.PI * 2); ctx.fill()
           ctx.strokeStyle = 'rgba(129,140,248,0.28)'
           ctx.lineWidth = 1.5
-          ctx.beginPath(); ctx.arc(sx, rsuScreenY, 24, -0.85, 0.85); ctx.stroke()
-          ctx.beginPath(); ctx.arc(sx, rsuScreenY, 38, -0.75, 0.75); ctx.stroke()
+          ctx.beginPath(); ctx.arc(nodeMap.x, nodeMap.y, 24, -0.85, 0.85); ctx.stroke()
+          ctx.beginPath(); ctx.arc(nodeMap.x, nodeMap.y, 38, -0.75, 0.75); ctx.stroke()
           ctx.fillStyle = '#a1a1aa'
           ctx.font = '11px Inter, Segoe UI, sans-serif'
-          ctx.fillText('RSU', sx - 11, roadTop - 74)
+          ctx.fillText('RSU', textMap.x, textMap.y)
         }
 
         // -- Per-vehicle display Y (continuous lane position) ------------------
@@ -332,15 +402,20 @@ export function SimulationCanvas({
             const bx = worldToScreenX(displayedXRef.current.get(b.id)?.value ?? b.x)
             const ay = laneToScreenY(roadTop, roadHeight, dispWyMap.get(a.id) ?? a.y, laneCount)
             const by = laneToScreenY(roadTop, roadHeight, dispWyMap.get(b.id) ?? b.y, laneCount)
+            
+            const mapA = applyCurve(ax - VEHICLE_WIDTH / 2, ay - 13)
+            const mapB = applyCurve(bx + VEHICLE_WIDTH / 2, by - 13)
+            const mapText = applyCurve((ax + bx) / 2 - 10, Math.min(ay, by) - 18)
+
             ctx.beginPath()
-            ctx.moveTo(ax - VEHICLE_WIDTH / 2, ay - 13)
-            ctx.lineTo(bx + VEHICLE_WIDTH / 2, by - 13)
+            ctx.moveTo(mapA.x, mapA.y)
+            ctx.lineTo(mapB.x, mapB.y)
             ctx.stroke()
             const gap = Math.abs(a.x - b.x).toFixed(1)
             ctx.setLineDash([])
             ctx.fillStyle = 'rgba(165,180,252,0.82)'
             ctx.font = '10px Inter, Segoe UI, sans-serif'
-            ctx.fillText(`${gap}m`, (ax + bx) / 2 - 10, Math.min(ay, by) - 18)
+            ctx.fillText(`${gap}m`, mapText.x, mapText.y)
             ctx.setLineDash([6, 5])
           }
           ctx.setLineDash([])
@@ -362,13 +437,17 @@ export function SimulationCanvas({
             const vx = worldToScreenX(vWorldX)
             const vy = laneToScreenY(roadTop, roadHeight, dispWyMap.get(vehicle.id) ?? vehicle.y, laneCount)
             const alphaBase = link === 'Connected' ? 0.28 : 0.16
-            ctx.strokeStyle = 
-`rgba(129,140,248,${alphaBase + signal * 0.18})`
+            ctx.strokeStyle = `rgba(129,140,248,${alphaBase + signal * 0.18})`
             ctx.lineWidth = 1
             ctx.setLineDash([5, 4])
+            
+            const mapV = applyCurve(vx + 12, vy - 8)
+            const mapRsu = applyCurve(nearestRsu.screenX, rsuScreenY + 4)
+            const mapCtrl = applyCurve((vx + nearestRsu.screenX) / 2, roadTop - 90 - (idx % 3) * 6)
+
             ctx.beginPath()
-            ctx.moveTo(vx + 12, vy - 8)
-            ctx.quadraticCurveTo((vx + nearestRsu.screenX) / 2, roadTop - 90 - (idx % 3) * 6, nearestRsu.screenX, rsuScreenY + 4)
+            ctx.moveTo(mapV.x, mapV.y)
+            ctx.quadraticCurveTo(mapCtrl.x, mapCtrl.y, mapRsu.x, mapRsu.y)
             ctx.stroke()
             ctx.setLineDash([])
           }
@@ -382,13 +461,11 @@ export function SimulationCanvas({
           if (drawX < -120 || drawX > w + 120) return
 
           const carCenterY = laneToScreenY(roadTop, roadHeight, dispWy, laneCount)
-          const bx = drawX - VEHICLE_WIDTH / 2
-          const by = carCenterY - VEHICLE_HEIGHT / 2
 
           const heading = v.heading ?? 0
           const crashed = v.crashed ?? false
-          const speedKmh = v.speed * 3.6
-          const speedCue = Math.min(1, speedKmh / 90)
+          const speedMs = v.speed
+          const speedCue = Math.min(1, speedMs / 25)
           
           // Tiny organic sway in radians
           const sway = Math.sin(now / 120 + drawX * 0.06) * speedCue * 0.009
@@ -402,25 +479,34 @@ export function SimulationCanvas({
 
           // -- Speed trail ---------------------------------------------------
           if (!crashed && (isOvertaking || speedCue > 0.35)) {
+            // To keep trails simple and performing well, we draw them relative to the un-rotated car pos first
+            // Wait, we can draw the trail inside the transformed context!
+          }
+
+          // Apply Curve Mapping for the vehicle itself
+          const mappedCar = applyCurve(drawX, carCenterY)
+
+          // -- Apply heading rotation around vehicle centre -------------------
+          ctx.save()
+          ctx.translate(mappedCar.x, mappedCar.y)
+          ctx.rotate(heading + sway + mappedCar.angle)   // radians — physics heading + micro-sway + road curve
+          
+          // Draw coordinates are now relative to the center of the car
+          const cx = -VEHICLE_WIDTH / 2
+          const cy = -VEHICLE_HEIGHT / 2
+
+          // Render Trail inside translated context so it curves with the road perfectly
+          if (!crashed && (isOvertaking || speedCue > 0.35)) {
             const trailLen = isOvertaking ? 60 : 30 + speedCue * 34
-            const trail = ctx.createLinearGradient(bx - trailLen, by, bx, by)
+            const trail = ctx.createLinearGradient(cx - trailLen, cy + VEHICLE_HEIGHT/2, cx, cy + VEHICLE_HEIGHT/2)
             trail.addColorStop(0, 'rgba(129,140,248,0)')
             trail.addColorStop(0.6, `rgba(129,140,248,${0.04 + speedCue * 0.08})`)
             trail.addColorStop(1, `rgba(129,140,248,${0.14 + speedCue * 0.12})`)
             ctx.fillStyle = trail
             ctx.beginPath()
-            ctx.roundRect(bx - trailLen, by - 3, trailLen, VEHICLE_HEIGHT + 6, 4)
+            ctx.roundRect(cx - trailLen, cy - 3, trailLen, VEHICLE_HEIGHT + 6, 4)
             ctx.fill()
           }
-
-          // -- Apply heading rotation around vehicle centre -------------------
-          ctx.save()
-          ctx.translate(drawX, carCenterY)
-          ctx.rotate(heading + sway)   // radians — physics heading + micro-sway
-          
-          // Draw coordinates are now relative to the center of the car
-          const cx = -VEHICLE_WIDTH / 2
-          const cy = -VEHICLE_HEIGHT / 2
 
           // -- Drop Shadow ---------------------------------------------------
           ctx.shadowColor = 'rgba(0,0,0,0.72)'
@@ -628,38 +714,46 @@ export function SimulationCanvas({
             ctx.font = 'bold 8px Inter, Segoe UI, sans-serif'
             const badgeW = ctx.measureText(phaseLabel).width + 10
             const badgeH = 14
-            const badgeX = drawX - badgeW / 2
             const badgeY = carCenterY - VEHICLE_HEIGHT / 2 - badgeH - 8
+            const mapBadge = applyCurve(drawX, badgeY) // Map relative to center
 
+            ctx.save()
+            ctx.translate(mapBadge.x, mapBadge.y)
+            ctx.rotate(mappedCar.angle)
+            
             ctx.fillStyle = phaseColor
             ctx.beginPath()
-            ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 4)
+            ctx.roundRect(-badgeW/2, 0, badgeW, badgeH, 4)
             ctx.fill()
             ctx.strokeStyle = 'rgba(255,255,255,0.1)'
             ctx.lineWidth = 1
             ctx.stroke()
             ctx.fillStyle = phaseTextColor
-            ctx.fillText(phaseLabel, badgeX + 5, badgeY + badgeH - 3)
+            ctx.fillText(phaseLabel, -badgeW/2 + 5, badgeH - 3)
 
             // Animated progress bar below badge during stabilizing
             if (phase === 'stabilizing' && v.stabilizeStartMs) {
               const elapsed = (Date.now() - v.stabilizeStartMs) / 2000 // 2s total
               const progressW = Math.min(1, elapsed) * VEHICLE_WIDTH
               ctx.fillStyle = 'rgba(52,211,153,0.14)'
-              ctx.fillRect(drawX - VEHICLE_WIDTH / 2, carCenterY + VEHICLE_HEIGHT / 2 + 2, VEHICLE_WIDTH, 3)
+              ctx.fillRect(-VEHICLE_WIDTH/2, badgeH + VEHICLE_HEIGHT + 8, VEHICLE_WIDTH, 3)
               ctx.fillStyle = 'rgba(52,211,153,0.72)'
-              ctx.fillRect(drawX - VEHICLE_WIDTH / 2, carCenterY + VEHICLE_HEIGHT / 2 + 2, progressW, 3)
+              ctx.fillRect(-VEHICLE_WIDTH/2, badgeH + VEHICLE_HEIGHT + 8, progressW, 3)
             }
+            ctx.restore()
           }
 
           // -- Label + speed readout (Un-rotated so they are always readable) 
           ctx.fillStyle = crashed ? '#fb7185' : isOvertaking ? '#a5b4fc' : '#fafafa'
           ctx.font = 'bold 10px Inter, Segoe UI, sans-serif'
-          ctx.fillText(vehicleLabel, drawX - VEHICLE_WIDTH/2 + 3, carCenterY - VEHICLE_HEIGHT/2 - 6)
+          
+          const labelMap = applyCurve(drawX - VEHICLE_WIDTH/2 + 3, carCenterY - VEHICLE_HEIGHT/2 - 6)
+          ctx.fillText(vehicleLabel, labelMap.x, labelMap.y)
           if (!crashed) {
             ctx.font = '9px Inter, Segoe UI, sans-serif'
             ctx.fillStyle = '#a1a1aa'
-            ctx.fillText(`${speedKmh.toFixed(0)} km/h`, drawX - VEHICLE_WIDTH/2 + 3, carCenterY + VEHICLE_HEIGHT/2 + 10)
+            const speedMap = applyCurve(drawX - VEHICLE_WIDTH/2 + 3, carCenterY + VEHICLE_HEIGHT/2 + 10)
+            ctx.fillText(`${speedMs.toFixed(1)} m/s`, speedMap.x, speedMap.y)
           }
         }
 
@@ -677,8 +771,14 @@ export function SimulationCanvas({
         ctx.font = 'bold 11px Inter, Segoe UI, sans-serif'
         for (const lane of platoonIndices) {
           const labelY = laneToScreenY(roadTop, roadHeight, lane, laneCount) - VEHICLE_HEIGHT / 2 - 10
+          const labelMap = applyCurve(8, labelY)
           ctx.fillStyle = lane === 0 ? 'rgba(165,180,252,0.88)' : lane === 1 ? 'rgba(212,212,216,0.76)' : 'rgba(161,161,170,0.7)'
-          ctx.fillText(`PLATOON ${String.fromCharCode(65 + lane)}`, 8, labelY)
+          
+          ctx.save()
+          ctx.translate(labelMap.x, labelMap.y)
+          ctx.rotate(labelMap.angle)
+          ctx.fillText(`PLATOON ${String.fromCharCode(65 + lane)}`, 0, 0)
+          ctx.restore()
         }
 
         // -- FPS counter -------------------------------------------------------
@@ -733,13 +833,35 @@ export function SimulationCanvas({
       (xMeters - cameraX) * PX_PER_METER + WORLD_OFFSET_X
     const laneCount = Math.max(MIN_LANE_COUNT, ...vArr.map((v) => Math.floor(v.y) + 1))
 
+    // The click handling should approximate reverse map or test against warped positions
     for (const v of vArr) {
       const dispWy = displayedWyRef.current.get(v.id)?.value ?? (v.wy ?? v.y)
       const carCenterY = laneToScreenY(roadTop, roadHeight, dispWy, laneCount)
       const dispX = displayedXRef.current.get(v.id)?.value ?? v.x
       const drawX = worldToScreenX(dispX)
+      
+      const cycle = 4000;
+      const localX = ((dispX % cycle) + cycle) % cycle; 
+      let offsetY = 0;
+      const shiftAmount = 250; 
+      const curveLength = 600; 
+
+      if (localX < 1400) {
+          offsetY = 0;
+      } else if (localX < 1400 + curveLength) {
+          const t = (localX - 1400) / curveLength;
+          offsetY = (1 - Math.cos(t * Math.PI)) / 2 * shiftAmount; 
+      } else if (localX < 3400) {
+          offsetY = shiftAmount;
+      } else {
+          const t = (localX - 3400) / curveLength;
+          offsetY = shiftAmount - ((1 - Math.cos(t * Math.PI)) / 2 * shiftAmount);
+      }
+      
+      const warpedY = carCenterY + offsetY
+      
       const bx = drawX - VEHICLE_WIDTH / 2
-      const by = carCenterY - VEHICLE_HEIGHT / 2
+      const by = warpedY - VEHICLE_HEIGHT / 2
 
       if (clickX >= bx && clickX <= bx + VEHICLE_WIDTH && clickY >= by && clickY <= by + VEHICLE_HEIGHT) {
         onVehicleClick(v.id)

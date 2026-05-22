@@ -16,6 +16,7 @@ export type AnalysisSample = {
 
 export type HistoryRecord = {
   id: string
+  name?: string
   createdAt: string
   durationSec: number
   avgDelayMs: number
@@ -95,10 +96,10 @@ export class SessionManager {
       spacingError: Number(Math.abs(spacingError).toFixed(3)),
       stringStabilityIndex: Number(stringStabilityIndex.toFixed(4)),
       rsuSignalDbm,
-      speedLeader: Number((speeds.leader * 3.6).toFixed(2)),
-      speedF1: Number((speeds.f1 * 3.6).toFixed(2)),
-      speedF2: Number((speeds.f2 * 3.6).toFixed(2)),
-      speedF3: Number((speeds.f3 * 3.6).toFixed(2)),
+      speedLeader: Number(speeds.leader.toFixed(2)),
+      speedF1: Number(speeds.f1.toFixed(2)),
+      speedF2: Number(speeds.f2.toFixed(2)),
+      speedF3: Number(speeds.f3.toFixed(2)),
     })
   }
 
@@ -155,6 +156,27 @@ export class SessionManager {
     } catch {
       return []
     }
+  }
+
+  deleteRecord(id: string): boolean {
+    const all = this.readAll()
+    const filtered = all.filter((r) => r.id !== id)
+    if (filtered.length === all.length) return false
+    writeFileSync(HISTORY_PATH, JSON.stringify(filtered, null, 2))
+    return true
+  }
+
+  renameRecord(id: string, newName: string): boolean {
+    const all = this.readAll()
+    const index = all.findIndex((r) => r.id === id)
+    if (index === -1) return false
+    all[index].name = newName
+    writeFileSync(HISTORY_PATH, JSON.stringify(all, null, 2))
+    return true
+  }
+
+  deleteAllRecords(): void {
+    writeFileSync(HISTORY_PATH, '[]')
   }
 }
 

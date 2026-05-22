@@ -1,9 +1,9 @@
 ﻿import type { SimulationParams, SimulationTelemetry, VehicleState } from '../types/sim'
+import { formatChannelBandwidthHz, formatSpeedMs, platoonSpeedMs } from '../utils/units'
 
 type Props = {
   telemetry: SimulationTelemetry
   vehicles: VehicleState[]
-  bandwidthMbps: number
   params: SimulationParams
 }
 
@@ -31,15 +31,16 @@ function MetricBox({ label, value, cls = '' }: { label: string; value: string; c
   )
 }
 
-export function TelemetryPanel({ telemetry, vehicles, bandwidthMbps, params }: Props) {
+export function TelemetryPanel({ telemetry, vehicles, params }: Props) {
   const commHealth = telemetry.v2vLink === 'Connected' ? 'Good' : telemetry.v2vLink === 'Degraded' ? 'Moderate' : 'Poor'
   const spacingCls = numColor(telemetry.maxSpacingError, 1, 1.5)
   const delayCls = numColor(telemetry.endToEndDelayMs, 20, 30)
   const hzCls = telemetry.effectiveHz >= 10 ? 'ck-metric-ok' : telemetry.effectiveHz >= 8 ? 'ck-metric-warn' : 'ck-metric-bad'
 
-  // Displayed packet loss: use avgDynamicPacketLoss when dynamic mode ON
   const displayedLoss = params.dynamicPathLoss ? telemetry.avgDynamicPacketLoss : params.packetLossPercent
   const lossCls = numColor(displayedLoss, 5, 15)
+  const avgSpeedMs = platoonSpeedMs(telemetry)
+  const bandwidthHz = params.channelBandwidthHz ?? 20_000_000
 
   return (
     <aside className="ck-panel">
@@ -51,7 +52,6 @@ export function TelemetryPanel({ telemetry, vehicles, bandwidthMbps, params }: P
         </div>
       </div>
 
-      {/* Status badges row */}
       <div className="ck-status-row">
         <div className={`ck-status-badge ${statusColor(telemetry.status)}`}>
           {telemetry.status}
@@ -67,7 +67,6 @@ export function TelemetryPanel({ telemetry, vehicles, bandwidthMbps, params }: P
         </div>
       </div>
 
-      {/* System metrics 2-col grid */}
       <div className="ck-section-title">System Status</div>
       <div className="ck-metric-grid">
         <MetricBox label="OBU Nodes" value={`${vehicles.length}`} cls="ck-metric-ok" />
@@ -87,10 +86,10 @@ export function TelemetryPanel({ telemetry, vehicles, bandwidthMbps, params }: P
         <MetricBox label="Net Delay" value={`${telemetry.networkDelayMs} ms`} cls={delayCls} />
         <MetricBox label="Update Rate" value={`${telemetry.effectiveHz.toFixed(0)} Hz`} cls={hzCls} />
         <MetricBox label="RSU Signal" value={`${telemetry.rsuSignalDbm} dBm`} />
-        <MetricBox label="Bandwidth" value={`${bandwidthMbps} Mbps`} />
+        <MetricBox label="Channel Bandwidth (B)" value={formatChannelBandwidthHz(bandwidthHz)} />
         <MetricBox
-          label={params.dynamicPathLoss ? 'Avg Path Loss' : 'Packet Loss'}
-          value={`${displayedLoss.toFixed(1)}%`}
+          label={params.dynamicPathLoss ? 'Avg Path Loss' : 'Packet Loss (PLR)'}
+          value={`${displayedLoss.toFixed(1)} %`}
           cls={lossCls}
         />
       </div>
@@ -98,7 +97,7 @@ export function TelemetryPanel({ telemetry, vehicles, bandwidthMbps, params }: P
       <div className="ck-divider" />
       <div className="ck-section-title">Stability Metrics</div>
       <div className="ck-metric-grid">
-        <MetricBox label="Avg Speed" value={`${telemetry.averagePlatoonSpeedKmh.toFixed(1)} km/h`} cls="ck-metric-ok" />
+        <MetricBox label="Avg Speed (v̄)" value={formatSpeedMs(avgSpeedMs)} cls="ck-metric-ok" />
         <MetricBox label="SSI" value={`${telemetry.stringStabilityIndex}`} />
         <MetricBox label="Max Spacing Err" value={`${telemetry.maxSpacingError.toFixed(2)} m`} cls={spacingCls} />
         <MetricBox label="Spacing Error" value={`${telemetry.spacingError.toFixed(2)} m`} />
@@ -106,4 +105,3 @@ export function TelemetryPanel({ telemetry, vehicles, bandwidthMbps, params }: P
     </aside>
   )
 }
-

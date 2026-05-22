@@ -258,7 +258,7 @@ function buildScorecard(meta: SimulationHistory | undefined, series: AnalysisDat
 
 function exportCsv(analysis: AnalysisData, meta?: SimulationHistory): void {
   const headers = ['t_sec', 'delay_ms', 'packet_loss_pct', 'spacing_error_m', 'ssi', 'rsu_dbm',
-    'speed_leader_kmh', 'speed_f1_kmh', 'speed_f2_kmh', 'speed_f3_kmh']
+    'speed_leader_ms', 'speed_f1_ms', 'speed_f2_ms', 'speed_f3_ms']
   const rows = analysis.series.map((sample) => [
     sample.t.toFixed(3),
     sample.delayMs.toFixed(3),
@@ -425,8 +425,8 @@ export function AnalysisPage({ analysis, meta, onClose }: Props) {
           data={series}
           renderLines={() => (
             <>
-              <YAxis tick={AXIS_STYLE} label={{ value: 'Speed (km/h)', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 11 }} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => [`${value} km/h`]} />
+              <YAxis tick={AXIS_STYLE} label={{ value: 'Speed (m/s)', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 11 }} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => [`${value} m/s`]} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Line type="monotone" dataKey="speedLeader" stroke={COLORS.leader} dot={false} strokeWidth={2} name="Leader" isAnimationActive={false} />
               <Line type="monotone" dataKey="speedF1" stroke={COLORS.f1} dot={false} strokeWidth={1.5} name="Follower 1" isAnimationActive={false} />
@@ -474,7 +474,7 @@ export function AnalysisPage({ analysis, meta, onClose }: Props) {
           data={series}
           renderLines={() => (
             <>
-              <YAxis tick={AXIS_STYLE} label={{ value: 'Signal (dBm)', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 11 }} reversed />
+              <YAxis tick={AXIS_STYLE} label={{ value: 'Signal (dBm)', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 11 }} />
               <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => [`${Number(value).toFixed(1)} dBm`, 'RSU Signal']} />
               <ReferenceLine y={-80} stroke="#dc2626" strokeDasharray="5 5" />
               <Line type="monotone" dataKey="rsuSignalDbm" stroke={COLORS.rsu} dot={false} strokeWidth={2} name="RSU Signal" isAnimationActive={false} />
@@ -502,10 +502,10 @@ export function AnalysisPage({ analysis, meta, onClose }: Props) {
                 <th>Spacing Err (m)</th>
                 <th>SSI</th>
                 <th>RSU (dBm)</th>
-                <th>Leader (km/h)</th>
-                <th>F1 (km/h)</th>
-                <th>F2 (km/h)</th>
-                <th>F3 (km/h)</th>
+                <th>Leader (m/s)</th>
+                <th>F1 (m/s)</th>
+                <th>F2 (m/s)</th>
+                <th>F3 (m/s)</th>
               </tr>
             </thead>
             <tbody>

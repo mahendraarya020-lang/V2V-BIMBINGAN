@@ -1,42 +1,74 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-
-type Theme = 'light' | 'dark' | 'system'
-
-function applyTheme(theme: Theme) {
-  const root = document.documentElement
-  if (theme === 'dark') {
-    root.classList.add('dark')
-  } else if (theme === 'light') {
-    root.classList.remove('dark')
-  } else {
-    // System: follow OS preference
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-    if (prefersDark) root.classList.add('dark')
-    else root.classList.remove('dark')
-  }
-}
+import { appConfig } from '../config'
+import { Toast, type ToastItem } from '../components/Toast'
 
 export function SettingsPage() {
   const navigate = useNavigate()
   const user = localStorage.getItem('sim-user-nim') ?? 'Researcher'
-  const [theme, setTheme] = useState<Theme>(
-    () => (localStorage.getItem('sim-theme') as Theme) ?? 'light'
+
+  // --- States ---
+  const [defaultTopology, setDefaultTopology] = useState(
+    () => localStorage.getItem('sim-default-topology') ?? 'Hybrid'
+  )
+  const [defaultSpeed, setDefaultSpeed] = useState(
+    () => Number(localStorage.getItem('sim-default-speed')) || 22
+  )
+  const [defaultTimeHeadway, setDefaultTimeHeadway] = useState(
+    () => Number(localStorage.getItem('sim-default-headway')) || 1.2
+  )
+  const [defaultLatency, setDefaultLatency] = useState(
+    () => Number(localStorage.getItem('sim-default-latency')) || 10
+  )
+  const [defaultPacketLoss, setDefaultPacketLoss] = useState(
+    () => Number(localStorage.getItem('sim-default-loss')) || 0.5
+  )
+  const [defaultBandwidthMhz, setDefaultBandwidthMhz] = useState(
+    () => Number(localStorage.getItem('sim-default-bandwidth-mhz')) || 20
   )
 
-  useEffect(() => {
-    applyTheme(theme)
-    localStorage.setItem('sim-theme', theme)
-  }, [theme])
+  const [toasts, setToasts] = useState<ToastItem[]>([])
 
-  const themeOptions: { value: Theme; label: string; icon: string; desc: string }[] = [
-    { value: 'light', label: 'Light', icon: '☀', desc: 'Clean white interface' },
-    { value: 'dark',  label: 'Dark',  icon: '◐', desc: 'Low-light dark theme' },
-    { value: 'system',label: 'System',icon: '⊙', desc: 'Follow OS preference' },
-  ]
+  // --- Handlers ---
+  function addToast(title: string, message: string, kind: 'info' | 'warn' | 'error') {
+    setToasts((prev) => [...prev, { id: Date.now(), title, message, kind }])
+  }
+
+  useEffect(() => {
+    // Force Dark Mode globally
+    document.documentElement.classList.add('dark')
+    localStorage.setItem('sim-theme', 'dark')
+  }, [])
+
+  // Persist to localStorage
+  useEffect(() => localStorage.setItem('sim-default-topology', defaultTopology), [defaultTopology])
+  useEffect(() => localStorage.setItem('sim-default-speed', defaultSpeed.toString()), [defaultSpeed])
+  useEffect(() => localStorage.setItem('sim-default-headway', defaultTimeHeadway.toString()), [defaultTimeHeadway])
+  useEffect(() => localStorage.setItem('sim-default-latency', defaultLatency.toString()), [defaultLatency])
+  useEffect(() => localStorage.setItem('sim-default-loss', defaultPacketLoss.toString()), [defaultPacketLoss])
+  useEffect(() => localStorage.setItem('sim-default-bandwidth-mhz', defaultBandwidthMhz.toString()), [defaultBandwidthMhz])
+
+  async function handleDeleteAll() {
+    if (!window.confirm('Are you sure you want to delete ALL simulation history? This action is irreversible.')) {
+      return
+    }
+    try {
+      const res = await fetch(`${appConfig.backendUrl}/api/sessions`, {
+        method: 'DELETE',
+      })
+      if (res.ok) {
+        addToast('History Cleared', 'All simulation sessions have been deleted.', 'info')
+      } else {
+        addToast('Error', 'Failed to delete simulation history.', 'error')
+      }
+    } catch (e) {
+      console.error(e)
+      addToast('Error', 'Network error while deleting history.', 'error')
+    }
+  }
 
   return (
-    <main className="dashboard-page">
+    <main className="dashboard-page relative">
       {/* ── Sidebar ── */}
       <aside className="sidebar">
         <div className="sidebar-brand">
@@ -57,130 +89,152 @@ export function SettingsPage() {
             Settings
           </button>
         </nav>
-        <footer className="sidebar-footer">
-          <button
-            className="nav-item danger"
-            type="button"
-            onClick={() => { localStorage.removeItem('sim-user-nim'); navigate('/') }}
-          >
-            Logout
-          </button>
-        </footer>
       </aside>
 
       {/* ── Main ── */}
-      <section className="dashboard-main">
+      <section className="dashboard-main pb-16">
         <header className="topbar">
           <div>
             <span className="eyebrow">Preferences</span>
             <h1>Settings</h1>
-            <p>Configure appearance and account preferences for <strong>{user}</strong>.</p>
+            <p className="text-zinc-400">Configure global simulation parameters for your workspace.</p>
           </div>
         </header>
 
-        {/* Theme Card */}
-        <section className="card" style={{ maxWidth: 520, padding: '1.5rem' }}>
-          <h2 style={{ margin: '0 0 0.3rem', fontSize: '0.95rem', fontWeight: 700 }}>
-            Appearance
-          </h2>
-          <p style={{ margin: '0 0 1.25rem', fontSize: '0.8rem', color: 'var(--color-muted)' }}>
-            Choose how the interface looks. System follows your OS setting.
-          </p>
+        <div className="flex flex-col gap-6 mt-6 w-full max-w-3xl">
+          {/* Simulation Defaults Card */}
+          <section className="card p-6 border border-zinc-800 bg-zinc-900/40">
+            <h2 className="mb-1 text-lg font-bold text-zinc-100">Simulation Defaults</h2>
+            <p className="mb-6 text-sm text-zinc-400">
+              Set the foundational kinematic and communication parameters loaded on initialization.
+            </p>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {themeOptions.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setTheme(opt.value)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1rem',
-                  padding: '0.75rem 1rem',
-                  borderRadius: '10px',
-                  border: `1.5px solid ${theme === opt.value ? 'var(--color-accent, #6366f1)' : 'var(--color-border, rgba(0,0,0,0.08))'}`,
-                  background: theme === opt.value ? 'rgba(99,102,241,0.07)' : 'transparent',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'border-color 0.15s, background 0.15s',
-                  width: '100%',
-                }}
-              >
-                <span style={{
-                  width: 36, height: 36,
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  borderRadius: '8px',
-                  background: theme === opt.value ? 'rgba(99,102,241,0.15)' : 'rgba(0,0,0,0.04)',
-                  fontSize: '1.1rem',
-                  flexShrink: 0,
-                }}>
-                  {opt.icon}
-                </span>
-                <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-heading, #0f172a)' }}>
-                    {opt.label}
-                  </span>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--color-muted, #64748b)' }}>
-                    {opt.desc}
-                  </span>
-                </span>
-                {/* Selection indicator */}
-                <span style={{
-                  width: 16, height: 16, borderRadius: '50%',
-                  border: `1.5px solid ${theme === opt.value ? '#6366f1' : 'rgba(0,0,0,0.2)'}`,
-                  background: theme === opt.value ? '#6366f1' : 'transparent',
-                  flexShrink: 0,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  transition: 'background 0.15s',
-                }}>
-                  {theme === opt.value && (
-                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
-                      <polyline points="1.5,4 3.5,6 6.5,2" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  )}
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <label className="flex flex-col gap-2">
+                <span className="text-sm font-medium text-zinc-300">Default V2V Topology</span>
+                <select 
+                  className="p-2.5 rounded-lg border border-zinc-800 bg-zinc-900 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none transition-shadow"
+                  value={defaultTopology}
+                  onChange={(e) => setDefaultTopology(e.target.value)}
+                >
+                  <option value="Hybrid">Hybrid (Default)</option>
+                  <option value="PF">Predecessor Following (PF)</option>
+                  <option value="L2A">Leader-to-All (L2A)</option>
+                </select>
+              </label>
 
-        {/* Account Card */}
-        <section className="card" style={{ maxWidth: 520, padding: '1.5rem', marginTop: '1rem' }}>
-          <h2 style={{ margin: '0 0 0.3rem', fontSize: '0.95rem', fontWeight: 700 }}>Account</h2>
-          <p style={{ margin: '0 0 1rem', fontSize: '0.8rem', color: 'var(--color-muted)' }}>
-            Logged in as researcher ID.
-          </p>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '0.75rem',
-            padding: '0.75rem 1rem',
-            borderRadius: '10px',
-            border: '1px solid var(--color-border, rgba(0,0,0,0.08))',
-            background: 'rgba(0,0,0,0.02)',
-          }}>
-            <span style={{
-              width: 36, height: 36,
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              borderRadius: '50%', background: '#6366f1', color: '#fff',
-              fontSize: '0.8rem', fontWeight: 700, flexShrink: 0,
-            }}>
-              {user.slice(0, 2).toUpperCase()}
-            </span>
-            <span style={{ flex: 1 }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-heading, #0f172a)' }}>{user}</div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--color-muted, #64748b)' }}>Researcher NIM</div>
-            </span>
+              <label className="flex flex-col gap-2">
+                <span className="text-sm font-medium text-zinc-300">Default Reference Speed (v₀)</span>
+                <div className="flex items-center border border-zinc-800 bg-zinc-900 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 transition-shadow">
+                  <input 
+                    type="number" min="5" max="42" step="1"
+                    className="flex-1 bg-transparent p-2.5 text-sm text-white outline-none"
+                    value={defaultSpeed}
+                    onChange={(e) => setDefaultSpeed(Number(e.target.value))}
+                  />
+                  <span className="pr-3 text-xs font-semibold text-zinc-500">m/s</span>
+                </div>
+              </label>
+
+              <label className="flex flex-col gap-2">
+                <span className="text-sm font-medium text-zinc-300">Default Time Headway</span>
+                <div className="flex items-center border border-zinc-800 bg-zinc-900 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 transition-shadow">
+                  <input 
+                    type="number" min="0.1" max="5.0" step="0.1"
+                    className="flex-1 bg-transparent p-2.5 text-sm text-white outline-none"
+                    value={defaultTimeHeadway}
+                    onChange={(e) => setDefaultTimeHeadway(Number(e.target.value))}
+                  />
+                  <span className="pr-3 text-xs font-semibold text-zinc-500">s</span>
+                </div>
+              </label>
+            </div>
+          </section>
+
+          {/* Network Emulation Defaults Card */}
+          <section className="card p-6 border border-zinc-800 bg-zinc-900/40">
+            <h2 className="mb-1 text-lg font-bold text-zinc-100">Network Defaults</h2>
+            <p className="mb-6 text-sm text-zinc-400">
+              Configure baseline 5G environmental factors for thesis experiments.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <label className="flex flex-col gap-2">
+                <span className="text-sm font-medium text-zinc-300">Default Latency</span>
+                <div className="flex items-center border border-zinc-800 bg-zinc-900 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 transition-shadow">
+                  <input 
+                    type="number" min="0" max="1000" step="1"
+                    className="flex-1 bg-transparent p-2.5 text-sm text-white outline-none"
+                    value={defaultLatency}
+                    onChange={(e) => setDefaultLatency(Number(e.target.value))}
+                  />
+                  <span className="pr-3 text-xs font-semibold text-zinc-500">ms</span>
+                </div>
+              </label>
+
+              <label className="flex flex-col gap-2">
+                <span className="text-sm font-medium text-zinc-300">Default Packet Loss (PLR)</span>
+                <div className="flex items-center border border-zinc-800 bg-zinc-900 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 transition-shadow">
+                  <input 
+                    type="number" min="0" max="100" step="0.1"
+                    className="flex-1 bg-transparent p-2.5 text-sm text-white outline-none"
+                    value={defaultPacketLoss}
+                    onChange={(e) => setDefaultPacketLoss(Number(e.target.value))}
+                  />
+                  <span className="pr-3 text-xs font-semibold text-zinc-500">%</span>
+                </div>
+              </label>
+
+              <label className="flex flex-col gap-2">
+                <span className="text-sm font-medium text-zinc-300">Default Channel Bandwidth (B)</span>
+                <div className="flex items-center border border-zinc-800 bg-zinc-900 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 transition-shadow">
+                  <input
+                    type="number" min="5" max="100" step="5"
+                    className="flex-1 bg-transparent p-2.5 text-sm text-white outline-none"
+                    value={defaultBandwidthMhz}
+                    onChange={(e) => setDefaultBandwidthMhz(Number(e.target.value))}
+                  />
+                  <span className="pr-3 text-xs font-semibold text-zinc-500">MHz</span>
+                </div>
+              </label>
+            </div>
+          </section>
+
+          {/* Account Card (Minimal) */}
+          <section className="card p-6 border border-zinc-800 bg-zinc-900/40 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-zinc-100">Account</h2>
+              <p className="text-sm text-zinc-400">Logged in as <strong className="text-white">{user}</strong>.</p>
+            </div>
             <button
-              className="btn ghost"
-              style={{ fontSize: '0.75rem', padding: '0.3rem 0.7rem' }}
+              className="px-4 py-2 text-sm font-medium bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 rounded-lg transition-colors"
               onClick={() => { localStorage.removeItem('sim-user-nim'); navigate('/') }}
               type="button"
             >
               Sign out
             </button>
-          </div>
-        </section>
+          </section>
+
+          {/* Danger Zone */}
+          <section className="card p-6 border border-red-900/30 bg-red-950/10">
+            <h2 className="mb-1 text-lg font-bold text-red-500">Danger Zone</h2>
+            <p className="mb-6 text-sm text-zinc-400">
+              Irreversible action. This will clear all saved CSV telemetry from the browser/database.
+            </p>
+            <div className="flex items-start">
+              <button
+                className="px-5 py-2.5 text-sm font-semibold rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors"
+                onClick={handleDeleteAll}
+                type="button"
+              >
+                Delete All Simulation History
+              </button>
+            </div>
+          </section>
+        </div>
       </section>
+
+      <Toast toasts={toasts} onDismiss={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))} />
     </main>
   )
 }

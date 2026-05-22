@@ -8,7 +8,13 @@ import { computeAccFallbackAcceleration, computeCaccAcceleration } from './sim/c
 import type { CaccInput } from './sim/cacc'
 
 import { NetworkEmulator } from './sim/networkEmulator'
-import { LANE_WIDTH_M, updateFollower, updateLeader } from './sim/physics'
+import {
+  FOLLOWER_EMERGENCY_DECEL_MS2,
+  FOLLOWER_MAX_DECEL_MS2,
+  LANE_WIDTH_M,
+  updateFollower,
+  updateLeader,
+} from './sim/physics'
 import { SessionManager } from './sim/sessionManager'
 import {
   isSimulationTrigger,
@@ -35,8 +41,6 @@ const RSU_RANGE_M = 300
 
 
 // â”€â”€ Transfer FSM constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-/** Safety margin added to d_ref gap check before accepting a transfer (metres). */
-const TRANSFER_GAP_SAFETY_M = 6.0
 /** Approximate vehicle body length used in gap calculations (metres). */
 const VEHICLE_LENGTH_M = 4.5
 /** Cooldown duration after entering the destination platoon (seconds). */
@@ -79,7 +83,7 @@ const params: SimulationParams = {
   standstillDistance: 8,
   latencyMs: 10,
   packetLossPercent: 0.5,
-  bandwidthMbps: 200,
+  channelBandwidthHz: 20_000_000,
   v2vTopology: 'Hybrid',
   dynamicPathLoss: false,
 }
@@ -139,8 +143,77 @@ function clampPlatoonCount(value: number): number {
   return Math.min(MAX_PLATOON_COUNT, Math.max(MIN_PLATOON_COUNT, Math.round(value)))
 }
 
+/** Sort platoon front-to-back by decreasing x; tie-break on id for stable merge order. */
+function sortPlatoonByLongitudinal(platoon: VehicleState[]): VehicleState[] {
+  return [...platoon].sort((a, b) => {
+    if (b.x !== a.x) return b.x - a.x
+    return a.id.localeCompare(b.id)
+  })
+}
+
+/** Set each follower's predecessorId to the vehicle directly ahead (leader gets null). */
+function recomputePredecessorIds(platoon: VehicleState[]): VehicleState[] {
+  return platoon.map((v, i) => ({
+    ...v,
+    predecessorId: i === 0 ? null : platoon[i - 1].id,
+  }))
+}
+
+/** Minimum longitudinal clearance required before accepting a lane merge (m). */
+function minMergeGapRequiredM(): number {
+  return params.standstillDistance + params.targetSpeed * params.timeHeadway * 1.5
+}
+
+/** Neighbors of merge longitude vAx on destination platoon (sorted desc by x). */
+function findMergeNeighbors(dstSortedDesc: VehicleState[], vAx: number): {
+  pred: VehicleState | null
+  succ: VehicleState | null
+} {
+  const predCandidates = dstSortedDesc.filter((v) => v.x > vAx)
+  const pred = predCandidates.length ? predCandidates[predCandidates.length - 1] : null
+  const succCandidates = dstSortedDesc.filter((v) => v.x < vAx)
+  const succ = succCandidates.length ? succCandidates[0] : null
+  return { pred, succ }
+}
+
+/** Phase-1 merge slot clearance vs minMergeGapRequiredM (approx. bumper gap subtracts one vehicle length). */
+function mergeSlotClearanceM(
+  pred: VehicleState | null,
+  succ: VehicleState | null,
+  vAx: number,
+): { ok: boolean; gapM: number; detail: string } {
+  const minG = minMergeGapRequiredM()
+  if (pred && succ) {
+    const gapM = pred.x - succ.x - VEHICLE_LENGTH_M
+    return {
+      ok: gapM > minG,
+      gapM,
+      detail: `slot ${gapM.toFixed(1)}m (need >${minG.toFixed(1)}m between ${pred.id} and ${succ.id})`,
+    }
+  }
+  if (pred && !succ) {
+    const gapM = pred.x - vAx - VEHICLE_LENGTH_M
+    return {
+      ok: gapM > minG,
+      gapM,
+      detail: `clearance to predecessor ${pred.id}: ${gapM.toFixed(1)}m (need >${minG.toFixed(1)}m)`,
+    }
+  }
+  if (!pred && succ) {
+    const gapM = vAx - succ.x - VEHICLE_LENGTH_M
+    return {
+      ok: gapM > minG,
+      gapM,
+      detail: `clearance to follower ${succ.id}: ${gapM.toFixed(1)}m (need >${minG.toFixed(1)}m)`,
+    }
+  }
+  return { ok: true, gapM: Infinity, detail: 'empty destination platoon' }
+}
+
 function createPlatoons(count: number): VehicleState[][] {
-  return Array.from({ length: clampPlatoonCount(count) }, (_, i) => makeInitialPlatoon(i, followerCount))
+  return Array.from({ length: clampPlatoonCount(count) }, (_, i) =>
+    recomputePredecessorIds(sortPlatoonByLongitudinal(makeInitialPlatoon(i, followerCount))),
+  )
 }
 
 let platoons: VehicleState[][] = createPlatoons(DEFAULT_PLATOON_COUNT)
@@ -188,6 +261,30 @@ function dynamicPathLossForVehicle(vehicleX: number): number {
   return 80 * (Math.exp(k * t) - 1) / (Math.exp(k) - 1)
 }
 
+/**
+ * Dynamic distance-based RSU signal power (dBm) simulation.
+ * Signal fades logarithmically/exponentially as distance to the nearest RSU increases:
+ *  - d <= 50m (Near Zone): excellent signal from -50 dBm to -60 dBm
+ *  - 50m < d < 300m (Mid Zone): linear path loss transition down to -95 dBm
+ *  - d >= 300m (Out of Coverage): falls to a floor of -115 dBm
+ */
+function calculateRsuSignalDbm(leaderX: number): number {
+  const rsuIndex = Math.round(leaderX / RSU_SPACING_M)
+  const nearestRsuX = rsuIndex * RSU_SPACING_M
+  const d = Math.abs(leaderX - nearestRsuX)
+
+  if (d <= 50) {
+    return Number((-50 - (d / 50) * 10).toFixed(1))
+  } else if (d < RSU_RANGE_M) {
+    const t = (d - 50) / (RSU_RANGE_M - 50)
+    return Number((-60 - t * 35).toFixed(1))
+  } else {
+    const excessDist = d - RSU_RANGE_M
+    const fade = Math.min(20, (excessDist / 100) * 10)
+    return Number((-95 - fade).toFixed(1))
+  }
+}
+
 
 
 function resetSimulationState(nextCount = platoons.length || DEFAULT_PLATOON_COUNT): void {
@@ -208,7 +305,7 @@ function resizePlatoonFollowers(platoon: VehicleState[], lane: number, desiredFo
   const prefix = platoonPrefix(lane)
   const leader = platoon.find((vehicle) => vehicle.id === `${prefix}leader`) ?? platoon[0]
   if (!leader) return platoon
-  const sorted = [...platoon].sort((a, b) => b.x - a.x)
+  const sorted = sortPlatoonByLongitudinal(platoon)
   const currentFollowers = sorted.slice(1)
   const spacingMeters = VEHICLE_LENGTH_M + params.standstillDistance + (params.timeHeadway * Math.max(leader.speed, params.targetSpeed))
 
@@ -242,7 +339,9 @@ function resizePlatoonFollowers(platoon: VehicleState[], lane: number, desiredFo
 
 function applyFollowerCountToAllPlatoons(nextFollowerCount: number): void {
   followerCount = clampFollowerCount(nextFollowerCount)
-  platoons = platoons.map((platoon, lane) => resizePlatoonFollowers(platoon, lane, followerCount))
+  platoons = platoons.map((platoon, lane) =>
+    recomputePredecessorIds(sortPlatoonByLongitudinal(resizePlatoonFollowers(platoon, lane, followerCount))),
+  )
 }
 
 // â”€â”€â”€ Telemetry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -261,19 +360,23 @@ function getState(): SimulationState {
     return Math.abs(preceding.x - follower.x - desiredGap)
   })
   const maxSpacingError = followerSpacingErrors.length > 0 ? Math.max(...followerSpacingErrors) : Math.abs(spacingError)
-  const avgPlatoonSpeed = mainPlatoon.length > 0
-    ? (mainPlatoon.reduce((sum, vehicle) => sum + vehicle.speed, 0) / mainPlatoon.length) * 3.6
+  const avgPlatoonSpeedMs = mainPlatoon.length > 0
+    ? mainPlatoon.reduce((sum, vehicle) => sum + vehicle.speed, 0) / mainPlatoon.length
     : 0
   const endToEndDelayMs = effectiveLatency() * Math.max(1, mainPlatoon.length - 1)
-  const loss = effectivePacketLoss()
-  const link = loss > 20 ? 'Disconnected' : loss > 1 ? 'Degraded' : 'Connected'
-  const utilization = Math.min(100, ((vehicles.length * 0.05) / Math.max(1, params.bandwidthMbps)) * 100)
+  const channelMHz = params.channelBandwidthHz / 1e6
+  const utilization = Math.min(100, ((vehicles.length * 0.05) / Math.max(1, channelMHz)) * 100)
 
   // Compute average dynamic packet loss across all platoon vehicles
   const allVehicles = mainPlatoon.slice(1) // followers only
   const avgDynamicPacketLoss = params.dynamicPathLoss && allVehicles.length > 0
     ? allVehicles.reduce((sum, v) => sum + dynamicPathLossForVehicle(v.x), 0) / allVehicles.length
-    : loss
+    : effectivePacketLoss()
+
+  const loss = params.dynamicPathLoss ? avgDynamicPacketLoss : effectivePacketLoss()
+  const link = loss > 20 ? 'Disconnected' : loss > 1 ? 'Degraded' : 'Connected'
+
+  const rsuSignalDbm = calculateRsuSignalDbm(leader.x)
 
   return {
     sessionId: 'active-session',
@@ -284,16 +387,16 @@ function getState(): SimulationState {
     telemetry: {
       status: Math.abs(spacingError) < 2 ? 'Stable' : 'Unstable',
       v2vLink: link,
-      rsuSignalDbm: Number((-54 - loss * 0.9).toFixed(1)),
+      rsuSignalDbm,
       networkDelayMs: effectiveLatency(),
       endToEndDelayMs: Number(endToEndDelayMs.toFixed(1)),
       stringStabilityIndex: Number(Math.max(0, 1 - Math.abs(spacingError) / 20).toFixed(3)),
       spacingError: Number(spacingError.toFixed(2)),
       maxSpacingError: Number(maxSpacingError.toFixed(2)),
-      averagePlatoonSpeedKmh: Number(avgPlatoonSpeed.toFixed(1)),
+      averagePlatoonSpeedMs: Number(avgPlatoonSpeedMs.toFixed(2)),
       humanBrakingActive: Date.now() < humanBrakingUntil,
       bandwidthUtilization: Number(utilization.toFixed(3)),
-      controlMode: isAccFallbackActive() ? 'ACC' : 'CACC',
+      controlMode: loss >= ACC_FALLBACK_LOSS_THRESHOLD ? 'ACC' : 'CACC',
       effectiveHz: session.getCurrentHz(),
       collisionCount: session.getCollisionCount(),
       avgDynamicPacketLoss: Number(avgDynamicPacketLoss.toFixed(1)),
@@ -359,17 +462,22 @@ function stepPlatoon(
   isPrimaryPlatoon: boolean,
 ): VehicleState[] {
   if (platoon.length === 0) return platoon
-  const leaderVeh = platoon[0]
+  const sorted = recomputePredecessorIds(sortPlatoonByLongitudinal(platoon))
+  const leaderVeh = sorted[0]
   const humanBrake = isPrimaryPlatoon && Date.now() < humanBrakingUntil ? 0.9 : 0
   const speedRegBrake = leaderVeh.speed > params.targetSpeed ? 0.3 : 0
   const leaderBrake = Math.max(isPrimaryPlatoon ? manualInput.brake : 0, humanBrake, speedRegBrake)
   const leaderThrottle = humanBrake > 0 ? 0 : isPrimaryPlatoon ? manualInput.throttle : 0.4
   const nextLeader = updateLeader(leaderVeh, dtSec, leaderThrottle, leaderBrake)
 
+  const lossToUse = params.dynamicPathLoss
+    ? Math.max(dynamicPathLossForVehicle(nextLeader.x), Date.now() < packetDropUntil ? 25 : 0)
+    : effectivePacketLoss()
+
   emulator.push(
     { x: nextLeader.x, speed: nextLeader.speed, timestamp: Date.now() },
     effectiveLatency(),
-    effectivePacketLoss(),
+    lossToUse,
   )
 
   const delayedLeader = emulator.receive() ?? {
@@ -378,13 +486,20 @@ function stepPlatoon(
     timestamp: Date.now(),
   }
 
-  const useAccFallback = isAccFallbackActive()
+  const useAccFallback = lossToUse >= ACC_FALLBACK_LOSS_THRESHOLD
   const nextVehicles: VehicleState[] = [nextLeader]
   const now = Date.now()
 
-  for (let i = 1; i < platoon.length; i++) {
-    const preceding = i === 1 ? delayedLeader : nextVehicles[i - 1]
-    const current = platoon[i]
+  for (let i = 1; i < sorted.length; i++) {
+    const current = sorted[i]
+    const predId = current.predecessorId ?? sorted[i - 1]?.id
+    let predIndex = predId ? sorted.findIndex((v) => v.id === predId) : -1
+    if (predIndex < 0 || predIndex >= i || (i > 1 && predIndex === 0)) predIndex = i - 1
+
+    const preceding =
+      predIndex === 0
+        ? delayedLeader
+        : (nextVehicles[predIndex] ?? sorted[predIndex])
 
     // ── Phase 4: Stabilization cooldown ────────────────────────────────
     // Check if this vehicle has finished its 2.0s cooldown and should exit FSM.
@@ -413,7 +528,7 @@ function stepPlatoon(
 
     // ── Phase 3: Longitudinal Sync During Inter-Platoon Transfer ──
     if (updatedCurrent.transferPhase === 'in-transit') {
-      const targetPlatoonSpeed = platoon[0]?.speed ?? updatedCurrent.speed
+      const targetPlatoonSpeed = sorted[0]?.speed ?? updatedCurrent.speed
       const alpha = Math.min(1.2 * dtSec, 1)
       updatedCurrent = {
         ...updatedCurrent,
@@ -432,7 +547,7 @@ function stepPlatoon(
       || (params.dynamicPathLoss && vehicleDynLoss >= ACC_FALLBACK_LOSS_THRESHOLD)
 
     // Topology-Aware CACC Input
-    // Note: `preceding` may be a LeaderPacket (i===1) which lacks `accel` — fallback to 0
+    // Note: `preceding` may be a LeaderPacket (predIndex===0) which lacks `accel` — fallback to 0
     const precedingAccel = 'accel' in preceding ? (preceding as VehicleState).accel : 0
     const caccInput: CaccInput = {
       predecessorX: preceding.x,
@@ -453,9 +568,9 @@ function stepPlatoon(
       ? computeAccFallbackAcceleration(caccInput)
       : computeCaccAcceleration(caccInput)
 
-    if (isPrimaryPlatoon && i === platoon.length - 1) {
+    if (isPrimaryPlatoon && i === sorted.length - 1) {
       const ssi = Math.max(0, 1 - Math.abs(spacingError) / 20)
-      const followerSpeeds = platoon.slice(1).map((vehicle) => vehicle.speed)
+      const followerSpeeds = sorted.slice(1).map((vehicle) => vehicle.speed)
       session.addSample(
         effectiveLatency(),
         spacingError,
@@ -471,7 +586,19 @@ function stepPlatoon(
       )
     }
 
-    nextVehicles.push(updateFollower({ ...updatedCurrent, dynamicPacketLoss: vehicleDynLoss }, dtSec, accelCmd))
+    const actualGap = preceding.x - updatedCurrent.x
+    const desiredGap = params.standstillDistance + effectiveHeadway * updatedCurrent.speed
+    const spacingCritical = actualGap < desiredGap
+    const maxDecelMs2 = spacingCritical ? FOLLOWER_EMERGENCY_DECEL_MS2 : FOLLOWER_MAX_DECEL_MS2
+
+    nextVehicles.push(
+      updateFollower(
+        { ...updatedCurrent, dynamicPacketLoss: vehicleDynLoss },
+        dtSec,
+        accelCmd,
+        { maxDecelMs2 },
+      ),
+    )
   }
 
   return nextVehicles
@@ -622,32 +749,25 @@ io.on('connection', (socket) => {
       const dstLane = vB.y
       const dstPlatoon = platoons[dstLane]
 
-      // â”€â”€ Phase 1: Negotiation â€” gap check at destination platoon tail â”€â”€â”€â”€â”€â”€
+      // â”€â”€ Phase 1: Negotiation â€” merge-slot longitudinal clearance (join-in-middle safe) â”€â”€
       // Tail of destination platoon is the vehicle with the smallest X.
-      const dstSorted = dstPlatoon ? [...dstPlatoon].sort((a, b) => b.x - a.x) : []
-      const dstTail = dstSorted[dstSorted.length - 1]
-      const dRef = params.standstillDistance + params.timeHeadway * (dstTail?.speed ?? 0)
-      const gapAtTail = dstTail ? (dstTail.x - vA.x) : Infinity
+      const dstSorted = dstPlatoon ? sortPlatoonByLongitudinal(dstPlatoon) : []
+      const { pred, succ } = findMergeNeighbors(dstSorted, vA.x)
+      const clearance = mergeSlotClearanceM(pred, succ, vA.x)
 
-      // Gap check: the space between Vk and the destination tail must be safe.
-      // (negative gapAtTail means Vk is already behind the tail â€” also safe)
-      const gapOk = gapAtTail < 0 || gapAtTail > dRef + VEHICLE_LENGTH_M + TRANSFER_GAP_SAFETY_M
-
-      if (!gapOk) {
-        // Negotiation failed â€” emit a negotiation-refused event and abort
+      if (!clearance.ok) {
         io.emit('sim:transferRefused', {
           vehicleId: idA,
-          reason: `Gap at destination tail too small (${gapAtTail.toFixed(1)}m < required ${(dRef + VEHICLE_LENGTH_M + TRANSFER_GAP_SAFETY_M).toFixed(1)}m)`,
+          reason: `Merge slot too tight (${clearance.detail})`,
         })
         return
       }
 
       // â”€â”€ Phase 2: Departing â€” Vk switches to ACC, opens gap in source platoon â”€
       // Find the vehicle directly behind Vk in the source platoon.
-      const srcSorted = [...(platoons[srcLane] ?? [])].sort((a, b) => b.x - a.x)
+      const srcSorted = sortPlatoonByLongitudinal(platoons[srcLane] ?? [])
       const vkIndexInSrc = srcSorted.findIndex((v) => v.id === vA.id)
       const vkSuccessor = srcSorted[vkIndexInSrc + 1] // vehicle behind Vk
-      const vkPredecessor = srcSorted[vkIndexInSrc - 1] // vehicle in front of Vk
 
       // The successor's new predecessor becomes the vehicle that was in front of Vk.
       // We achieve this by simply removing Vk from the source platoon â€” the
@@ -699,7 +819,7 @@ io.on('connection', (socket) => {
       }
     }
 
-    platoons = platoons.map((platoon) => [...platoon].sort((a, b) => b.x - a.x))
+    platoons = platoons.map((platoon) => recomputePredecessorIds(sortPlatoonByLongitudinal(platoon)))
     io.emit('sim:state', getState())
   })
 
@@ -727,6 +847,37 @@ app.get('/health', (_req, res) => {
 
 app.get('/api/status', (_req, res) => {
   res.json(getState())
+})
+
+app.delete('/api/sessions', (req, res) => {
+  session.deleteAllRecords()
+  io.emit('sim:history', session.readAll())
+  res.json({ ok: true })
+})
+
+app.delete('/api/sessions/:id', (req, res) => {
+  const success = session.deleteRecord(req.params.id)
+  if (success) {
+    io.emit('sim:history', session.readAll())
+    res.json({ ok: true })
+  } else {
+    res.status(404).json({ error: 'Session not found' })
+  }
+})
+
+app.patch('/api/sessions/:id', (req, res) => {
+  const { name } = req.body
+  if (typeof name !== 'string') {
+    res.status(400).json({ error: 'Invalid name' })
+    return
+  }
+  const success = session.renameRecord(req.params.id, name)
+  if (success) {
+    io.emit('sim:history', session.readAll())
+    res.json({ ok: true })
+  } else {
+    res.status(404).json({ error: 'Session not found' })
+  }
 })
 
 if (canServeFrontend()) {

@@ -8,6 +8,7 @@ import type { ToastItem } from '../components/Toast'
 import { VehicleDetail } from '../components/VehicleDetail'
 import { useSimulationSocket } from '../hooks/useSimulationSocket'
 import { useDataLogger } from '../hooks/useDataLogger'
+import { readDefaultParamsFromStorage } from '../utils/units'
 import { AnalysisPage } from './AnalysisPage'
 
 export function SimulationPage() {
@@ -26,6 +27,13 @@ export function SimulationPage() {
   const lastControlModeRef = useRef<'ACC' | 'CACC' | null>(null)
   const lastRunningRef = useRef(false)
   const nextToastIdRef = useRef(1)
+  const defaultsAppliedRef = useRef(false)
+
+  useEffect(() => {
+    if (!isConnected || defaultsAppliedRef.current) return
+    defaultsAppliedRef.current = true
+    actions.updateParams(readDefaultParamsFromStorage())
+  }, [isConnected, actions])
 
   function pushToast(item: Omit<ToastItem, 'id'>) {
     const id = nextToastIdRef.current++
@@ -274,7 +282,7 @@ export function SimulationPage() {
             onVehicleClick={setSelectedVehicleId}
             pendingSwap={pendingSwap}
             running={state.running}
-            avgSpeedKmh={telemetry.averagePlatoonSpeedKmh}
+            avgSpeedMs={telemetry.averagePlatoonSpeedMs}
           />
 
           {selectedVehicleId && (
@@ -288,7 +296,6 @@ export function SimulationPage() {
         <TelemetryPanel
           telemetry={telemetry}
           vehicles={state.vehicles}
-          bandwidthMbps={state.params.bandwidthMbps}
           params={state.params}
         />
       </div>

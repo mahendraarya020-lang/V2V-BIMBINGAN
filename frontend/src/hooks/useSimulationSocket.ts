@@ -9,11 +9,15 @@ import type {
   SimulationState,
   SimulationTrigger,
 } from '../types/sim'
+import { normalizeParams, platoonSpeedMs } from '../utils/units'
 
 function normalizeState(payload: SimulationState): SimulationState {
   const telemetry = payload.telemetry ?? ({} as SimulationState['telemetry'])
+  const params = normalizeParams(payload.params as SimulationParams & { bandwidthMbps?: number })
+  const avgMs = platoonSpeedMs(telemetry as Parameters<typeof platoonSpeedMs>[0])
   return {
     ...payload,
+    params,
     vehicles: (payload.vehicles ?? []).map((vehicle) => ({
       ...vehicle,
       wy: vehicle.wy ?? vehicle.y ?? 0,
@@ -25,7 +29,7 @@ function normalizeState(payload: SimulationState): SimulationState {
       ...telemetry,
       endToEndDelayMs: telemetry.endToEndDelayMs ?? telemetry.networkDelayMs ?? 0,
       maxSpacingError: telemetry.maxSpacingError ?? Math.abs(telemetry.spacingError ?? 0),
-      averagePlatoonSpeedKmh: telemetry.averagePlatoonSpeedKmh ?? 0,
+      averagePlatoonSpeedMs: avgMs,
       networkDelayMs: telemetry.networkDelayMs ?? 0,
       spacingError: telemetry.spacingError ?? 0,
       stringStabilityIndex: telemetry.stringStabilityIndex ?? 0,
@@ -76,7 +80,7 @@ export function useSimulationSocket() {
             vehiclesCount: payload?.vehicles?.length ?? -1,
             hasEndToEndDelayMs: typeof payload?.telemetry?.endToEndDelayMs === 'number',
             hasMaxSpacingError: typeof payload?.telemetry?.maxSpacingError === 'number',
-            hasAveragePlatoonSpeedKmh: typeof payload?.telemetry?.averagePlatoonSpeedKmh === 'number',
+            hasAveragePlatoonSpeedMs: typeof payload?.telemetry?.averagePlatoonSpeedMs === 'number',
             firstVehicle: payload?.vehicles?.[0]
               ? {
                 id: payload.vehicles[0].id,
@@ -105,7 +109,7 @@ export function useSimulationSocket() {
           data: {
             endToEndDelayMs: normalized.telemetry.endToEndDelayMs,
             maxSpacingError: normalized.telemetry.maxSpacingError,
-            averagePlatoonSpeedKmh: normalized.telemetry.averagePlatoonSpeedKmh,
+            averagePlatoonSpeedMs: normalized.telemetry.averagePlatoonSpeedMs,
           },
           timestamp: Date.now(),
         }),

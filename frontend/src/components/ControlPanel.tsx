@@ -1,5 +1,15 @@
 import { useState } from 'react'
 import type { SimulationParams, SimulationTrigger } from '../types/sim'
+import {
+  formatChannelBandwidthMHz,
+  formatHeadway,
+  formatLatency,
+  formatPlr,
+  formatSpeedMs,
+  formatStandstill,
+  hzToMhz,
+  mhzToHz,
+} from '../utils/units'
 
 type Props = {
   params: SimulationParams
@@ -12,26 +22,23 @@ type Props = {
   onSwap: (idA: string, idB: string) => void
 }
 
-const MS_TO_KMH = 3.6
-const KMH_TO_MS = 1 / MS_TO_KMH
-
 type Tab = 'network' | 'scenarios' | 'maneuvers'
 
-const presets = [
+const presets: { label: string; desc: string; params: Partial<SimulationParams> }[] = [
   {
     label: 'Nominal',
     desc: 'Stable baseline',
-    params: { latencyMs: 10, packetLossPercent: 0.2, bandwidthMbps: 800, timeHeadway: 1 },
+    params: { latencyMs: 10, packetLossPercent: 0.2, channelBandwidthHz: 100_000_000, timeHeadway: 1 },
   },
   {
     label: 'Congested',
     desc: 'High-density network',
-    params: { latencyMs: 16, packetLossPercent: 3, bandwidthMbps: 180, timeHeadway: 1.3 },
+    params: { latencyMs: 16, packetLossPercent: 3, channelBandwidthHz: 40_000_000, timeHeadway: 1.3 },
   },
   {
     label: 'Stress Test',
     desc: 'ACC fallback mode',
-    params: { latencyMs: 20, packetLossPercent: 12, bandwidthMbps: 80, timeHeadway: 1.6 },
+    params: { latencyMs: 20, packetLossPercent: 12, channelBandwidthHz: 10_000_000, timeHeadway: 1.6 },
   },
 ]
 
@@ -66,7 +73,7 @@ export function ControlPanel({
   const [tab, setTab] = useState<Tab>('network')
   const [firstId, setFirstId] = useState('')
   const [secondId, setSecondId] = useState('')
-  const targetSpeedKmh = Math.round(params.targetSpeed * MS_TO_KMH)
+  const channelMhz = hzToMhz(params.channelBandwidthHz ?? 20_000_000)
   const selA = firstId && vehicleIds.includes(firstId) ? firstId : (vehicleIds[0] ?? '')
   const selB = secondId && vehicleIds.includes(secondId) ? secondId : (vehicleIds[1] ?? '')
 
@@ -78,7 +85,6 @@ export function ControlPanel({
 
   return (
     <aside className="ck-panel">
-      {/* Panel header */}
       <div className="ck-panel-header">
         <div className="ck-panel-dot" />
         <div>
@@ -87,7 +93,6 @@ export function ControlPanel({
         </div>
       </div>
 
-      {/* Tab bar */}
       <div className="ck-tabs">
         {tabs.map((t) => (
           <button
@@ -101,17 +106,13 @@ export function ControlPanel({
         ))}
       </div>
 
-      {/* Tab content */}
       <div className="ck-tab-content">
 
-        {/* ── Tab 1: 5G & CACC ── */}
         {tab === 'network' && (
           <div className="ck-form-group">
 
-            {/* Section: 5G Channel Model */}
             <div className="ck-group-title">5G Channel Model</div>
 
-            {/* Dynamic Path Loss Toggle (3GPP) */}
             <div className="ck-toggle-row">
               <div>
                 <span className="ck-slider-label">Dynamic Path Loss (3GPP)</span>
@@ -130,22 +131,21 @@ export function ControlPanel({
               </button>
             </div>
 
-            <SliderRow label="Latency" min={5} max={20} value={params.latencyMs}
-              format={(v) => `${v} ms`} onChange={(v) => onUpdateParams({ latencyMs: v })} />
+            <SliderRow label="One-Way Latency" min={5} max={20} value={params.latencyMs}
+              format={formatLatency} onChange={(v) => onUpdateParams({ latencyMs: v })} />
             <SliderRow
-              label="Packet Loss" min={0} max={30} step={0.5} value={params.packetLossPercent}
-              format={(v) => `${v.toFixed(1)}%`} onChange={(v) => onUpdateParams({ packetLossPercent: v })}
+              label="Packet Loss Rate (PLR)" min={0} max={30} step={0.5} value={params.packetLossPercent}
+              format={formatPlr} onChange={(v) => onUpdateParams({ packetLossPercent: v })}
               disabled={params.dynamicPathLoss}
             />
-            <SliderRow label="Bandwidth" min={50} max={1000} step={10} value={params.bandwidthMbps}
-              format={(v) => `${v} Mbps`} onChange={(v) => onUpdateParams({ bandwidthMbps: v })} />
+            <SliderRow label="Channel Bandwidth (B)" min={5} max={100} step={5} value={channelMhz}
+              format={formatChannelBandwidthMHz}
+              onChange={(v) => onUpdateParams({ channelBandwidthHz: mhzToHz(v) })} />
 
             <div className="ck-divider" />
 
-            {/* Section: CACC Parameters */}
             <div className="ck-group-title">CACC Parameters</div>
 
-            {/* V2V Topology Dropdown */}
             <div className="ck-slider">
               <div className="ck-slider-head">
                 <span className="ck-slider-label">V2V Topology</span>
@@ -163,16 +163,17 @@ export function ControlPanel({
               </select>
             </div>
 
-            <SliderRow label="Target Speed" min={10} max={120} step={5} value={targetSpeedKmh}
-              format={(v) => `${v} km/h`} onChange={(v) => onUpdateParams({ targetSpeed: v * KMH_TO_MS })} />
-            <SliderRow label="Time Headway" min={0.5} max={2} step={0.1} value={params.timeHeadway}
-              format={(v) => `${v.toFixed(1)} s`} onChange={(v) => onUpdateParams({ timeHeadway: v })} />
+            <SliderRow label="Reference Speed (v₀)" min={5} max={42} step={1} value={params.targetSpeed}
+              format={formatSpeedMs} onChange={(v) => onUpdateParams({ targetSpeed: v })} />
+            <SliderRow label="Time Headway (h)" min={0.5} max={3} step={0.1} value={params.timeHeadway}
+              format={formatHeadway} onChange={(v) => onUpdateParams({ timeHeadway: v })} />
+            <SliderRow label="Standstill Distance (s₀)" min={4} max={20} step={0.5} value={params.standstillDistance}
+              format={formatStandstill} onChange={(v) => onUpdateParams({ standstillDistance: v })} />
             <SliderRow label="Platoon Size" min={1} max={10} value={followerCount}
               format={(v) => `${v} follower${v > 1 ? 's' : ''}`} onChange={onFollowerCountChange} />
           </div>
         )}
 
-        {/* ── Tab 2: Scenarios ── */}
         {tab === 'scenarios' && (
           <div className="ck-form-group">
             <div className="ck-group-title">Network Presets</div>
@@ -202,7 +203,6 @@ export function ControlPanel({
           </div>
         )}
 
-        {/* ── Tab 3: Maneuvers ── */}
         {tab === 'maneuvers' && (
           <div className="ck-form-group">
             <div className="ck-group-title">Manual Override</div>

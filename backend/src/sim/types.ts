@@ -1,5 +1,7 @@
 export type VehicleState = {
   id: string
+  /** Immediate predecessor in longitudinal order (platoon leader has none). */
+  predecessorId?: string | null
   /** Longitudinal position along the road (meters) */
   x: number
   /** Lane index — integer that determines platoon grouping */
@@ -46,12 +48,18 @@ export type VehicleState = {
 export type V2VTopology = 'PF' | 'L2A' | 'Hybrid'
 
 export type SimulationParams = {
+  /** Reference speed v₀ (m/s) */
   targetSpeed: number
+  /** Constant time headway h (s) */
   timeHeadway: number
+  /** Standstill distance s₀ (m) */
   standstillDistance: number
+  /** One-way network latency (ms) */
   latencyMs: number
+  /** Packet loss rate PLR (%) */
   packetLossPercent: number
-  bandwidthMbps: number
+  /** 5G NR channel bandwidth B (Hz) */
+  channelBandwidthHz: number
   /** V2V communication topology for CACC feedforward term. Default: 'Hybrid' */
   v2vTopology: V2VTopology
   /** When true, packet loss is calculated per-vehicle using 3GPP distance-based path loss model. */
@@ -67,7 +75,8 @@ export type Telemetry = {
   stringStabilityIndex: number
   spacingError: number
   maxSpacingError: number
-  averagePlatoonSpeedKmh: number
+  /** Mean platoon speed (m/s) */
+  averagePlatoonSpeedMs: number
   humanBrakingActive: boolean
   bandwidthUtilization: number
   controlMode: 'CACC' | 'ACC'

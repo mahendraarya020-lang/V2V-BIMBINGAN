@@ -5,6 +5,11 @@ const MAX_ACCEL = 3.5      // m/sÂ²  (engine limit)
 const MAX_BRAKE = 6.0      // m/sÂ²  (braking limit)
 const MAX_SPEED = 42.0     // m/s   (~150 km/h)
 
+/** Default longitudinal deceleration limit for CACC followers (m/s²). */
+export const FOLLOWER_MAX_DECEL_MS2 = MAX_BRAKE
+/** Emergency deceleration cap when spacing is below CACC reference (m/s²). */
+export const FOLLOWER_EMERGENCY_DECEL_MS2 = 9.0
+
 // â”€â”€â”€ Steering / kinematics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 /** Real road lane width.  Used to convert lane-unit lateral motion to metres. */
 export const LANE_WIDTH_M = 3.5
@@ -130,6 +135,11 @@ export function updateLeader(
   }
 }
 
+export type FollowerUpdateOpts = {
+  /** Magnitude of max deceleration (m/s²); defaults to FOLLOWER_MAX_DECEL_MS2. */
+  maxDecelMs2?: number
+}
+
 /**
  * Update a CACC follower for one timestep.
  * accelCmd is the output of computeCaccAcceleration / computeAccFallbackAcceleration.
@@ -139,10 +149,12 @@ export function updateFollower(
   follower: VehicleState,
   dtSec: number,
   accelCmd: number,
+  opts?: FollowerUpdateOpts,
 ): VehicleState {
   if (follower.crashed) return follower
 
-  const rawAccel = clamp(accelCmd, -MAX_BRAKE, MAX_ACCEL)
+  const maxDecel = opts?.maxDecelMs2 ?? FOLLOWER_MAX_DECEL_MS2
+  const rawAccel = clamp(accelCmd, -maxDecel, MAX_ACCEL)
   const speed = clamp(follower.speed + rawAccel * dtSec, 0, MAX_SPEED)
 
   const { heading, wy, maneuverTimer } = steer(follower, speed, dtSec)

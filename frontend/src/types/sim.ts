@@ -1,5 +1,7 @@
 export type VehicleState = {
   id: string
+  /** Immediate predecessor in longitudinal order (platoon leader has none). */
+  predecessorId?: string | null
   /** Longitudinal position along the road (meters) */
   x: number
   /** Lane index — integer that determines platoon grouping */
@@ -28,12 +30,18 @@ export type VehicleState = {
 export type V2VTopology = 'PF' | 'L2A' | 'Hybrid'
 
 export type SimulationParams = {
+  /** Reference speed v₀ (m/s) */
   targetSpeed: number
+  /** Constant time headway h (s) */
   timeHeadway: number
+  /** Standstill distance s₀ (m) */
   standstillDistance: number
+  /** One-way network latency (ms) */
   latencyMs: number
+  /** Packet loss rate PLR (%) */
   packetLossPercent: number
-  bandwidthMbps: number
+  /** 5G NR channel bandwidth B (Hz) */
+  channelBandwidthHz: number
   v2vTopology: V2VTopology
   dynamicPathLoss: boolean
 }
@@ -48,7 +56,7 @@ export type SimulationTelemetry = {
   stringStabilityIndex: number
   spacingError: number
   maxSpacingError: number
-  averagePlatoonSpeedKmh: number
+  averagePlatoonSpeedMs: number
   humanBrakingActive: boolean
   bandwidthUtilization: number
   controlMode: 'CACC' | 'ACC'
@@ -72,6 +80,7 @@ export type SimulationState = {
 
 export type SimulationHistory = {
   id: string
+  name?: string
   createdAt: string
   durationSec: number
   avgDelayMs: number

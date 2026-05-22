@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSimulationSocket } from '../hooks/useSimulationSocket'
+import { appConfig } from '../config'
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString('id-ID', {
@@ -20,6 +21,37 @@ export function DashboardPage() {
   const [query, setQuery] = useState('')
   const [showSimulationConfig, setShowSimulationConfig] = useState(false)
   const [platoonCount, setPlatoonCount] = useState(2)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
+
+  async function saveRename(id: string) {
+    if (!editingName.trim()) {
+      setEditingId(null)
+      return
+    }
+    try {
+      await fetch(`${appConfig.backendUrl}/api/sessions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editingName.trim() })
+      })
+    } catch (e) {
+      console.error('Failed to rename session', e)
+    } finally {
+      setEditingId(null)
+    }
+  }
+
+  async function deleteSession(id: string) {
+    if (!window.confirm('Are you sure you want to delete this experiment data? This cannot be undone.')) return
+    try {
+      await fetch(`${appConfig.backendUrl}/api/sessions/${id}`, {
+        method: 'DELETE'
+      })
+    } catch (e) {
+      console.error('Failed to delete session', e)
+    }
+  }
 
   const filteredHistory = useMemo(() => {
     const term = query.trim().toLowerCase()
@@ -153,15 +185,63 @@ export function DashboardPage() {
                 <li key={item.id}>
                   <div className="history-main">
                     <div className="history-id">
-                      <strong>{item.id}</strong>
+                      {editingId === item.id ? (
+                        <input
+                          autoFocus
+                          className="search-input"
+                          style={{ padding: '4px 8px', width: '200px', marginBottom: '4px' }}
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveRename(item.id)
+                            if (e.key === 'Escape') setEditingId(null)
+                          }}
+                          onBlur={() => saveRename(item.id)}
+                        />
+                      ) : (
+                        <strong
+                          title="Double click to rename"
+                          onDoubleClick={() => {
+                            setEditingId(item.id)
+                            setEditingName(item.name || item.id)
+                          }}
+                        >
+                          {item.name || item.id}
+                        </strong>
+                      )}
                       <small>{formatDate(item.createdAt)}</small>
                     </div>
-                    <button
-                      className="btn ghost"
-                      onClick={() => navigate('/simulation', { state: { historyId: item.id } })}
-                    >
-                      View Analysis
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        className="btn ghost"
+                        style={{ padding: '6px', minWidth: 'unset' }}
+                        title="Edit Name"
+                        onClick={() => {
+                          setEditingId(item.id)
+                          setEditingName(item.name || item.id)
+                        }}
+                      >
+                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" className="text-zinc-400 hover:text-blue-400" style={{ transition: 'color 0.2s' }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                      </button>
+                      <button
+                        className="btn ghost"
+                        style={{ padding: '6px', minWidth: 'unset' }}
+                        title="Delete Session"
+                        onClick={() => deleteSession(item.id)}
+                      >
+                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" className="text-zinc-400 hover:text-red-500" style={{ transition: 'color 0.2s' }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                      <button
+                        className="btn ghost"
+                        onClick={() => navigate('/simulation', { state: { historyId: item.id } })}
+                      >
+                        View Analysis
+                      </button>
+                    </div>
                   </div>
                   <ul className="history-metrics">
                     <li>

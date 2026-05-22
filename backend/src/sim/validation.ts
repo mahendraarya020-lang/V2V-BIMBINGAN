@@ -6,7 +6,7 @@ const NUMERIC_PARAM_LIMITS = {
   standstillDistance: [4, 20],
   latencyMs: [0, 500],
   packetLossPercent: [0, 100],
-  bandwidthMbps: [1, 2000],
+  channelBandwidthHz: [5_000_000, 100_000_000],
 } as const
 
 const VALID_TOPOLOGIES: V2VTopology[] = ['PF', 'L2A', 'Hybrid']
@@ -31,12 +31,17 @@ export function sanitizeParams(payload: unknown): Partial<SimulationParams> {
     ;(next as Record<string, number>)[key] = clamp(value, min, max)
   }
 
-  // v2vTopology — validated enum
+  // Legacy: bandwidthMbps → channelBandwidthHz (e.g. 200 Mbps → 20 MHz)
+  const legacyMbps = finiteNumber(source.bandwidthMbps)
+  if (legacyMbps !== null && next.channelBandwidthHz === undefined) {
+    const [min, max] = NUMERIC_PARAM_LIMITS.channelBandwidthHz
+    next.channelBandwidthHz = clamp(legacyMbps * 100_000, min, max)
+  }
+
   if (typeof source.v2vTopology === 'string' && VALID_TOPOLOGIES.includes(source.v2vTopology as V2VTopology)) {
     next.v2vTopology = source.v2vTopology as V2VTopology
   }
 
-  // dynamicPathLoss — boolean toggle
   if (typeof source.dynamicPathLoss === 'boolean') {
     next.dynamicPathLoss = source.dynamicPathLoss
   }
