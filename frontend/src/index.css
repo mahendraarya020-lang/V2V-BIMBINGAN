@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   font-family: "Geist", "SF Pro Display", "SF Pro Text", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #f4f4f5;
   background: #08090d;
@@ -2287,4 +2287,367 @@ input[type="range"]::-moz-range-thumb,
     border: 1px solid #bfdbfe !important;
     color: #1d4ed8 !important;
   }
+}
+
+/* ==========================================================================
+   💡 LIGHT THEME VARIABLES (Recommendation 4 - Theme Toggle)
+   ========================================================================== */
+[data-theme="light"] {
+  --bg: #f8fafc;
+  --surface: rgba(15, 23, 42, 0.032);
+  --surface-2: rgba(15, 23, 42, 0.05);
+  --surface-3: rgba(15, 23, 42, 0.075);
+  --border: rgba(15, 23, 42, 0.07);
+  --border-strong: rgba(15, 23, 42, 0.13);
+  --text: #0f172a;
+  --muted: #475569;
+  --muted-2: #64748b;
+
+  --accent: #0284c7;
+  --accent-mid: #0369a1;
+  --accent-strong: #0c4a6e;
+  --accent-bg: rgba(2, 132, 199, 0.08);
+  --accent-glow: rgba(14, 165, 233, 0.12);
+
+  --ok: #059669;
+  --warn: #d97706;
+  --bad: #dc2626;
+
+  --glow: 0 4px 20px rgba(15, 23, 42, 0.05), 0 0 8px rgba(14, 165, 233, 0.06);
+  --glow-sm: 0 2px 10px rgba(15, 23, 42, 0.03);
+}
+
+[data-theme="light"] body {
+  background:
+    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(37, 99, 235, 0.06), transparent),
+    radial-gradient(ellipse 60% 40% at 90% 20%,  rgba(124, 58, 237, 0.04), transparent),
+    linear-gradient(180deg, #f8fafc 0%, #e2e8f0 40%, #cbd5e1 100%);
+  color: var(--text);
+}
+
+[data-theme="light"] .card,
+[data-theme="light"] .sidebar,
+[data-theme="light"] .topbar,
+[data-theme="light"] .metric-card,
+[data-theme="light"] .history-card,
+[data-theme="light"] .analysis-header,
+[data-theme="light"] .scorecard,
+[data-theme="light"] .analysis-chart-card,
+[data-theme="light"] .metric-badge,
+[data-theme="light"] .auth-form,
+[data-theme="light"] .system-card,
+[data-theme="light"] .auth-stats div,
+[data-theme="light"] .loading-card,
+[data-theme="light"] .analysis-empty .card {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.09);
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.04);
+}
+
+[data-theme="light"] .btn {
+  color: #334155;
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.12);
+}
+
+[data-theme="light"] .btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: rgba(15, 23, 42, 0.22);
+  color: #0f172a;
+}
+
+[data-theme="light"] .btn.primary {
+  color: #ffffff;
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  border-color: rgba(37, 99, 235, 0.15);
+}
+
+[data-theme="light"] .btn.primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1d4ed8, #0284c7);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+}
+
+[data-theme="light"] .btn.ghost {
+  color: #475569;
+  background: rgba(15, 23, 42, 0.03);
+  border-color: transparent;
+}
+
+[data-theme="light"] .btn.ghost:hover:not(:disabled) {
+  background: rgba(15, 23, 42, 0.06);
+  color: #0f172a;
+}
+
+[data-theme="light"] .ck-btn {
+  color: #475569;
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.12);
+}
+
+[data-theme="light"] .ck-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: rgba(15, 23, 42, 0.2);
+  color: #0f172a;
+}
+
+[data-theme="light"] .ck-btn-primary {
+  color: #ffffff;
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  border-color: transparent;
+}
+
+[data-theme="light"] .ck-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1d4ed8, #0284c7);
+}
+
+[data-theme="light"] .ck-btn-danger,
+[data-theme="light"] .ck-btn-brake {
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.06);
+  border-color: rgba(220, 38, 38, 0.15);
+}
+
+[data-theme="light"] .ck-btn-accel {
+  color: #059669;
+  background: rgba(5, 150, 105, 0.06);
+  border-color: rgba(5, 150, 105, 0.15);
+}
+
+[data-theme="light"] .ck-btn-ghost {
+  color: #475569;
+  background: rgba(15, 23, 42, 0.03);
+  border-color: transparent;
+}
+
+[data-theme="light"] .ck-btn-ghost:hover:not(:disabled) {
+  background: rgba(15, 23, 42, 0.06);
+  color: #0f172a;
+}
+
+[data-theme="light"] .ck-select {
+  background-color: #ffffff;
+  color: #0f172a;
+  border-color: rgba(15, 23, 42, 0.15);
+}
+
+[data-theme="light"] .ck-select option {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+[data-theme="light"] .ck-tab {
+  color: #64748b;
+  border-color: transparent;
+}
+
+[data-theme="light"] .ck-tab.active {
+  color: #2563eb;
+  background-color: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.15);
+}
+
+[data-theme="light"] .search-input {
+  background-color: #ffffff;
+  color: #0f172a;
+  border-color: rgba(15, 23, 42, 0.15);
+}
+
+[data-theme="light"] .search-input::placeholder {
+  color: #94a3b8;
+}
+
+[data-theme="light"] .history-list li {
+  border-bottom-color: rgba(15, 23, 42, 0.06);
+}
+
+[data-theme="light"] .history-metrics li {
+  border-right-color: rgba(15, 23, 42, 0.06);
+}
+
+[data-theme="light"] .sidebar-brand,
+[data-theme="light"] .ck-navbar-brand {
+  color: #0f172a;
+}
+
+[data-theme="light"] .sidebar-brand .brand-mark,
+[data-theme="light"] .ck-brand-mark {
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.2);
+}
+
+[data-theme="light"] .nav-item {
+  color: #475569;
+}
+
+[data-theme="light"] .nav-item:hover {
+  background: rgba(15, 23, 42, 0.04);
+  color: #0f172a;
+}
+
+[data-theme="light"] .nav-item.active {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.06);
+}
+
+[data-theme="light"] .nav-item.danger:hover {
+  background: rgba(220, 38, 38, 0.08);
+  color: #dc2626;
+}
+
+[data-theme="light"] .ck-preset-btn {
+  background-color: #ffffff;
+  border-color: rgba(15, 23, 42, 0.12);
+}
+
+[data-theme="light"] .ck-preset-btn:hover {
+  background-color: #f8fafc;
+  border-color: #2563eb;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
+}
+
+[data-theme="light"] .ck-preset-label {
+  color: #0f172a;
+}
+
+[data-theme="light"] .ck-preset-desc {
+  color: #64748b;
+}
+
+[data-theme="light"] .ck-navbar {
+  background-color: rgba(255, 255, 255, 0.85);
+  border-bottom-color: rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="light"] .ck-pill.neutral {
+  background-color: rgba(15, 23, 42, 0.04);
+  color: #475569;
+}
+
+[data-theme="light"] .ck-status-badge {
+  background-color: rgba(15, 23, 42, 0.03);
+  color: #475569;
+  border-color: rgba(15, 23, 42, 0.07);
+}
+
+[data-theme="light"] .ck-status-badge.ck-metric-ok {
+  color: #059669;
+  background-color: rgba(5, 150, 105, 0.06);
+  border-color: rgba(5, 150, 105, 0.12);
+}
+
+[data-theme="light"] .ck-status-badge.ck-metric-warn {
+  color: #d97706;
+  background-color: rgba(217, 119, 6, 0.06);
+  border-color: rgba(217, 119, 6, 0.12);
+}
+
+[data-theme="light"] .ck-status-badge.ck-metric-bad {
+  color: #dc2626;
+  background-color: rgba(220, 38, 38, 0.06);
+  border-color: rgba(220, 38, 38, 0.12);
+}
+
+[data-theme="light"] .ck-metric-box {
+  background: #f8fafc;
+  border-color: rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="light"] .ck-metric-value {
+  color: #0f172a;
+}
+
+[data-theme="light"] .ck-metric-value.ck-metric-ok {
+  color: #059669;
+}
+
+[data-theme="light"] .ck-metric-value.ck-metric-warn {
+  color: #d97706;
+}
+
+[data-theme="light"] .ck-metric-value.ck-metric-bad {
+  color: #dc2626;
+}
+
+[data-theme="light"] .auth-form {
+  background: #ffffff;
+}
+
+[data-theme="light"] .auth-input {
+  background-color: #ffffff;
+  color: #0f172a;
+  border-color: rgba(15, 23, 42, 0.15);
+}
+
+[data-theme="light"] .auth-input::placeholder {
+  color: #94a3b8;
+}
+
+[data-theme="light"] .auth-stats div {
+  background-color: #f8fafc;
+}
+
+[data-theme="light"] .auth-stats strong {
+  color: #2563eb;
+}
+
+[data-theme="light"] .sim-start-modal {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.15);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.1);
+}
+
+[data-theme="light"] .sim-start-modal h3 {
+  color: #0f172a;
+}
+
+[data-theme="light"] .sim-start-modal label select {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: rgba(15, 23, 42, 0.15);
+}
+
+[data-theme="light"] .analysis-chart-card {
+  background: #ffffff !important;
+}
+
+[data-theme="light"] .analysis-chart-card .chart-title strong {
+  color: #0f172a;
+}
+
+[data-theme="light"] .metric-badge {
+  background: #ffffff !important;
+}
+
+[data-theme="light"] .metric-badge strong {
+  color: #0f172a;
+}
+
+[data-theme="light"] .analysis-table th {
+  background-color: #f1f5f9;
+  color: #334155;
+  border-bottom-color: #cbd5e1;
+}
+
+[data-theme="light"] .analysis-table td {
+  color: #334155;
+  border-bottom-color: #f1f5f9;
+}
+
+[data-theme="light"] .row-even td {
+  background-color: #ffffff;
+}
+
+[data-theme="light"] .row-odd td {
+  background-color: #f8fafc;
+}
+
+[data-theme="light"] .analysis-chart-card .recharts-tooltip-cursor {
+  fill: rgba(15, 23, 42, 0.03) !important;
+}
+
+[data-theme="light"] .recharts-tooltip-wrapper .recharts-default-tooltip {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
 }

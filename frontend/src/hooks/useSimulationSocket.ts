@@ -28,6 +28,7 @@ function normalizeState(payload: SimulationState): SimulationState {
     telemetry: {
       ...telemetry,
       endToEndDelayMs: telemetry.endToEndDelayMs ?? telemetry.networkDelayMs ?? 0,
+      timestampDeviationMs: telemetry.timestampDeviationMs ?? 0,
       maxSpacingError: telemetry.maxSpacingError ?? Math.abs(telemetry.spacingError ?? 0),
       averagePlatoonSpeedMs: avgMs,
       networkDelayMs: telemetry.networkDelayMs ?? 0,
@@ -52,6 +53,8 @@ export function useSimulationSocket() {
   const [savedMeta, setSavedMeta] = useState<SimulationHistory | null>(null)
   const [lastCollision, setLastCollision] = useState<{ between: string[]; gapMeters: number } | null>(null)
   const [lastTransferRefused, setLastTransferRefused] = useState<{ vehicleId: string; reason: string } | null>(null)
+  const [lastCooperativeInit, setLastCooperativeInit] = useState<{ vehicleId: string; targetLane: number; reason: string } | null>(null)
+  const [lastCooperativeReady, setLastCooperativeReady] = useState<{ vehicleId: string; targetLane: number; message: string } | null>(null)
   const [isConnected, setIsConnected] = useState(false)
 
   const socket = useMemo<Socket>(() => io(appConfig.backendUrl, {
@@ -122,6 +125,8 @@ export function useSimulationSocket() {
     socket.on('sim:saved', (payload: SimulationHistory) => setSavedMeta(payload))
     socket.on('sim:collision', (payload: { between: string[]; gapMeters: number }) => setLastCollision(payload))
     socket.on('sim:transferRefused', (payload: { vehicleId: string; reason: string }) => setLastTransferRefused(payload))
+    socket.on('sim:transferCooperativeInit', (payload: { vehicleId: string; targetLane: number; reason: string }) => setLastCooperativeInit(payload))
+    socket.on('sim:transferCooperativeReady', (payload: { vehicleId: string; targetLane: number; message: string }) => setLastCooperativeReady(payload))
     socket.connect()
     return () => {
       socket.removeAllListeners()
@@ -141,5 +146,5 @@ export function useSimulationSocket() {
     loadHistory: (id: string) => socket.emit('sim:loadHistory', id),
   }), [socket])
 
-  return { state, history, analysis, savedMeta, lastCollision, lastTransferRefused, isConnected, actions }
+  return { state, history, analysis, savedMeta, lastCollision, lastTransferRefused, lastCooperativeInit, lastCooperativeReady, isConnected, actions }
 }

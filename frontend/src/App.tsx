@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { DashboardPage } from './pages/DashboardPage'
@@ -13,6 +14,10 @@ function RequireAuth({ children }: { children: ReactNode }) {
 }
 
 function App() {
+  useEffect(() => {
+    const savedTheme = (localStorage.getItem('theme') as 'dark' | 'light') ?? 'dark'
+    document.documentElement.setAttribute('data-theme', savedTheme)
+  }, [])
   return (
     <ErrorBoundary>
       <Routes>

@@ -25,8 +25,12 @@ export function formatPlr(v: number): string {
   return `${v.toFixed(1)} %`
 }
 
-/** Format 5G NR channel bandwidth B in Hz (with MHz hint when large) */
+/** Format 5G NR channel bandwidth B in Hz (with GHz/MHz hint when large) */
 export function formatChannelBandwidthHz(hz: number): string {
+  if (hz >= 1_000_000_000) {
+    const ghz = hz / 1_000_000_000
+    return `${ghz.toFixed(1)} GHz (${hz.toLocaleString('en-US')} Hz)`
+  }
   if (hz >= 1_000_000) {
     const mhz = hz / 1_000_000
     return `${mhz.toFixed(0)} MHz (${hz.toLocaleString('en-US')} Hz)`
@@ -34,8 +38,12 @@ export function formatChannelBandwidthHz(hz: number): string {
   return `${hz.toLocaleString('en-US')} Hz`
 }
 
-/** Slider label: MHz only (stored as Hz via ×10⁶) */
+/** Slider label: MHz or GHz format (stored as Hz via ×10⁶) */
 export function formatChannelBandwidthMHz(mhz: number): string {
+  if (mhz >= 1000) {
+    const ghz = mhz / 1000
+    return `${ghz.toFixed(1)} GHz`
+  }
   return `${mhz} MHz`
 }
 
@@ -54,7 +62,7 @@ export function legacyMbpsToHz(mbps: number): number {
 
 export function normalizeParams(params: SimulationParams & { bandwidthMbps?: number }): SimulationParams {
   const channelBandwidthHz = params.channelBandwidthHz
-    ?? (params.bandwidthMbps != null ? legacyMbpsToHz(params.bandwidthMbps) : 20_000_000)
+    ?? (params.bandwidthMbps != null ? legacyMbpsToHz(params.bandwidthMbps) : 1_000_000_000)
   const { bandwidthMbps: _legacy, ...rest } = params
   return { ...rest, channelBandwidthHz }
 }
@@ -75,7 +83,7 @@ export function platoonSpeedMs(telemetry: {
 
 /** Read simulation defaults from Settings (localStorage) in SI units. */
 export function readDefaultParamsFromStorage(): Partial<SimulationParams> {
-  const bandwidthMhz = Number(localStorage.getItem('sim-default-bandwidth-mhz')) || 20
+  const bandwidthMhz = Number(localStorage.getItem('sim-default-bandwidth-mhz')) || 1000
   return {
     v2vTopology: (localStorage.getItem('sim-default-topology') as SimulationParams['v2vTopology']) || 'Hybrid',
     targetSpeed: Number(localStorage.getItem('sim-default-speed')) || 22,

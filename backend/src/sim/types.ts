@@ -19,9 +19,9 @@ export type VehicleState = {
   brake: boolean
   crashed: boolean
 
-  // ── Inter-Platoon Transfer FSM (4-phase) ───────────────────────────────────────
+  // ── Inter-Platoon Transfer FSM (5-phase) ───────────────────────────────────────
   /** Current FSM phase for inter-platoon transfer. null = normal operation. */
-  transferPhase?: 'departing' | 'in-transit' | 'stabilizing' | null
+  transferPhase?: 'waiting-for-gap' | 'departing' | 'in-transit' | 'stabilizing' | null
   /** Destination platoon lane index for the transfer. */
   transferTargetLane?: number
 
@@ -86,6 +86,8 @@ export type Telemetry = {
   avgDynamicPacketLoss: number
   /** Currently active V2V topology */
   v2vTopology: V2VTopology
+  /** Average timestamp synchronization deviation (ms) */
+  timestampDeviationMs: number
 }
 
 export type SimulationTrigger = 'humanBrake' | 'latencySpike' | 'packetDrop'

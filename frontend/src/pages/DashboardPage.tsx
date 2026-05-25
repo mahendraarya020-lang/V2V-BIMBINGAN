@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSimulationSocket } from '../hooks/useSimulationSocket'
 import { appConfig } from '../config'
@@ -23,6 +23,16 @@ export function DashboardPage() {
   const [platoonCount, setPlatoonCount] = useState(2)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('theme') as 'dark' | 'light') ?? 'dark'
+  })
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))
 
   async function saveRename(id: string) {
     if (!editingName.trim()) {
@@ -103,6 +113,9 @@ export function DashboardPage() {
           </button>
           <button className="nav-item" onClick={() => navigate('/settings')} type="button">
             Settings
+          </button>
+          <button className="nav-item" onClick={toggleTheme} type="button">
+            {theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode'}
           </button>
         </nav>
 

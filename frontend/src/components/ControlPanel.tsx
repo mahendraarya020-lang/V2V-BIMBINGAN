@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { SimulationParams, SimulationTrigger } from '../types/sim'
+import type { SimulationParams, SimulationTrigger, VehicleState } from '../types/sim'
 import {
   formatChannelBandwidthMHz,
   formatHeadway,
@@ -13,7 +13,7 @@ import {
 
 type Props = {
   params: SimulationParams
-  vehicleIds: string[]
+  vehicles: VehicleState[]
   followerCount: number
   onUpdateParams: (next: Partial<SimulationParams>) => void
   onFollowerCountChange: (count: number) => void
@@ -28,17 +28,17 @@ const presets: { label: string; desc: string; params: Partial<SimulationParams> 
   {
     label: 'Nominal',
     desc: 'Stable baseline',
-    params: { latencyMs: 10, packetLossPercent: 0.2, channelBandwidthHz: 100_000_000, timeHeadway: 1 },
+    params: { latencyMs: 10, packetLossPercent: 0.2, channelBandwidthHz: 1_000_000_000, timeHeadway: 1 },
   },
   {
     label: 'Congested',
     desc: 'High-density network',
-    params: { latencyMs: 16, packetLossPercent: 3, channelBandwidthHz: 40_000_000, timeHeadway: 1.3 },
+    params: { latencyMs: 16, packetLossPercent: 3, channelBandwidthHz: 400_000_000, timeHeadway: 1.3 },
   },
   {
     label: 'Stress Test',
     desc: 'ACC fallback mode',
-    params: { latencyMs: 20, packetLossPercent: 12, channelBandwidthHz: 10_000_000, timeHeadway: 1.6 },
+    params: { latencyMs: 20, packetLossPercent: 12, channelBandwidthHz: 100_000_000, timeHeadway: 1.6 },
   },
 ]
 
@@ -67,13 +67,16 @@ function SliderRow({
 }
 
 export function ControlPanel({
-  params, vehicleIds, followerCount,
+  params, vehicles, followerCount,
   onUpdateParams, onFollowerCountChange, onThrottleBrake, onTrigger, onSwap,
 }: Props) {
   const [tab, setTab] = useState<Tab>('network')
   const [firstId, setFirstId] = useState('')
   const [secondId, setSecondId] = useState('')
-  const channelMhz = hzToMhz(params.channelBandwidthHz ?? 20_000_000)
+  const channelMhz = hzToMhz(params.channelBandwidthHz ?? 1_000_000_000)
+  const vehicleIds = vehicles.map(v => v.id)
+  // Build a map from vehicle id to its actual platoon lane for correct labeling
+  const vehicleLaneMap = new Map(vehicles.map(v => [v.id, v.y]))
   const selA = firstId && vehicleIds.includes(firstId) ? firstId : (vehicleIds[0] ?? '')
   const selB = secondId && vehicleIds.includes(secondId) ? secondId : (vehicleIds[1] ?? '')
 
@@ -138,7 +141,7 @@ export function ControlPanel({
               format={formatPlr} onChange={(v) => onUpdateParams({ packetLossPercent: v })}
               disabled={params.dynamicPathLoss}
             />
-            <SliderRow label="Channel Bandwidth (B)" min={5} max={100} step={5} value={channelMhz}
+            <SliderRow label="Channel Bandwidth (B)" min={5} max={1000} step={5} value={channelMhz}
               format={formatChannelBandwidthMHz}
               onChange={(v) => onUpdateParams({ channelBandwidthHz: mhzToHz(v) })} />
 
@@ -230,7 +233,8 @@ export function ControlPanel({
                 <span className="ck-select-label">Vehicle A</span>
                 <select className="ck-select" value={selA} onChange={(e) => setFirstId(e.target.value)}>
                   {vehicleIds.map((id) => {
-                    const platoon = id.startsWith('b_') ? 'B' : 'A'
+                    const lane = vehicleLaneMap.get(id) ?? 0
+                    const platoon = String.fromCharCode(65 + lane)
                     return <option key={`a-${id}`} value={id}>[{platoon}] {id.replace('b_', '').toUpperCase()}</option>
                   })}
                 </select>
@@ -239,7 +243,8 @@ export function ControlPanel({
                 <span className="ck-select-label">Vehicle B</span>
                 <select className="ck-select" value={selB} onChange={(e) => setSecondId(e.target.value)}>
                   {vehicleIds.map((id) => {
-                    const platoon = id.startsWith('b_') ? 'B' : 'A'
+                    const lane = vehicleLaneMap.get(id) ?? 0
+                    const platoon = String.fromCharCode(65 + lane)
                     return <option key={`b-${id}`} value={id}>[{platoon}] {id.replace('b_', '').toUpperCase()}</option>
                   })}
                 </select>

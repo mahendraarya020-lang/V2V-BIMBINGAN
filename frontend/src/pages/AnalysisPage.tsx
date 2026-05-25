@@ -30,10 +30,10 @@ type ScoreItem = {
 }
 
 const COLORS = {
-  leader: '#16a34a',
-  f1: '#2563eb',
-  f2: '#7c3aed',
-  f3: '#ea580c',
+  leader: '#34d399', // Bright emerald leader color
+  f1: '#6366f1',     // Platoon A Indigo
+  f2: '#818cf8',     // Platoon A Follower 2
+  f3: '#a5b4fc',     // Platoon A Follower 3
   delay: '#d97706',
   loss: '#dc2626',
   ssi: '#059669',
@@ -256,45 +256,325 @@ function buildScorecard(meta: SimulationHistory | undefined, series: AnalysisDat
   ]
 }
 
-function exportCsv(analysis: AnalysisData, meta?: SimulationHistory): void {
-  const headers = ['t_sec', 'delay_ms', 'packet_loss_pct', 'spacing_error_m', 'ssi', 'rsu_dbm',
-    'speed_leader_ms', 'speed_f1_ms', 'speed_f2_ms', 'speed_f3_ms']
-  const rows = analysis.series.map((sample) => [
-    sample.t.toFixed(3),
-    sample.delayMs.toFixed(3),
-    sample.packetLoss.toFixed(3),
-    sample.spacingError.toFixed(3),
-    sample.stringStabilityIndex.toFixed(3),
-    sample.rsuSignalDbm.toFixed(3),
-    sample.speedLeader.toFixed(3),
-    sample.speedF1.toFixed(3),
-    sample.speedF2.toFixed(3),
-    sample.speedF3.toFixed(3),
-  ].join(';'))
 
-  const metaRows = meta ? [
-    `# session_id;${analysis.id}`,
-    `# created_at;${meta.createdAt}`,
-    `# duration_sec;${meta.durationSec.toFixed(3)}`,
-    `# avg_delay_ms;${meta.avgDelayMs.toFixed(3)}`,
-    `# avg_spacing_error_m;${meta.avgSpacingError.toFixed(3)}`,
-    `# max_spacing_error_m;${meta.maxSpacingError.toFixed(3)}`,
-    `# avg_ssi;${meta.avgStringStability.toFixed(3)}`,
-    `# packet_loss_pct;${meta.packetLossPercent.toFixed(3)}`,
-    `# collision_count;${meta.collisionCount}`,
-    `# avg_update_hz;${meta.avgUpdateHz.toFixed(3)}`,
-    `# acc_fallback_pct;${meta.accFallbackPercent.toFixed(3)}`,
-    '',
-  ] : [`# session_id;${analysis.id}`, '']
 
-  const csv = [...metaRows, headers.join(';'), ...rows].join('\n')
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = `${analysis.id}.csv`
-  anchor.click()
-  URL.revokeObjectURL(url)
+function exportExcel(analysis: AnalysisData, meta?: SimulationHistory): void {
+  // Styles aligned with corporate emerald-green theme
+  const greenHeaderStyle = "background-color: #047857; color: #ffffff; font-family: 'Segoe UI', sans-serif; font-size: 11px; font-weight: bold; text-align: left; padding: 8px; border: 1px solid #d1d5db;";
+  const greenTitleStyle = "background-color: #065f46; color: #ffffff; font-family: 'Segoe UI', sans-serif; font-size: 16px; font-weight: bold; text-align: center; padding: 12px; border: 1px solid #d1d5db;";
+  const cellStyle = "padding: 6px; border: 1px solid #e5e7eb; font-family: 'Segoe UI', sans-serif; font-size: 11px; color: #374151;";
+  const headerStyle = "background-color: #f3f4f6; font-family: 'Segoe UI', sans-serif; font-weight: bold; padding: 6px; border: 1px solid #d1d5db; font-size: 11px; color: #1f2937;";
+  const passStyle = "background-color: #d1fae5; color: #065f46; font-family: 'Segoe UI', sans-serif; font-weight: bold; text-align: center; border: 1px solid #e5e7eb; font-size: 11px;";
+  const failStyle = "background-color: #fee2e2; color: #991b1b; font-family: 'Segoe UI', sans-serif; font-weight: bold; text-align: center; border: 1px solid #e5e7eb; font-size: 11px;";
+
+  const scorecard = buildScorecard(meta, analysis.series);
+  const overallPass = scorecard.every((item) => item.pass);
+
+  // 1. Downsample the time series to exactly 15 key points for the QuickChart URLs to keep them safe and short
+  const targetSamplesCount = 15;
+  const originalSeries = analysis.series;
+  const downsampled: typeof originalSeries = [];
+  if (originalSeries.length <= targetSamplesCount) {
+    downsampled.push(...originalSeries);
+  } else {
+    for (let i = 0; i < targetSamplesCount; i++) {
+      const idx = Math.floor((i * (originalSeries.length - 1)) / (targetSamplesCount - 1));
+      downsampled.push(originalSeries[idx]);
+    }
+  }
+
+  // 2. Generate QuickChart configs
+  const speedChartConfig = {
+    type: 'line',
+    data: {
+      labels: downsampled.map((s) => `${s.t.toFixed(1)}s`),
+      datasets: [
+        {
+          label: 'Leader',
+          data: downsampled.map((s) => Number(s.speedLeader.toFixed(2))),
+          borderColor: '#34d399', // Bright emerald leader color
+          fill: false,
+          borderWidth: 2.5,
+          pointRadius: 2,
+        },
+        {
+          label: 'F1',
+          data: downsampled.map((s) => Number(s.speedF1.toFixed(2))),
+          borderColor: '#6366f1', // Platoon A Indigo
+          fill: false,
+          borderWidth: 1.5,
+          pointRadius: 2,
+        },
+        {
+          label: 'F2',
+          data: downsampled.map((s) => Number(s.speedF2.toFixed(2))),
+          borderColor: '#818cf8', // Platoon A Follower 2
+          fill: false,
+          borderWidth: 1.5,
+          pointRadius: 2,
+        },
+        {
+          label: 'F3',
+          data: downsampled.map((s) => Number(s.speedF3.toFixed(2))),
+          borderColor: '#a5b4fc', // Platoon A Follower 3
+          fill: false,
+          borderWidth: 1.5,
+          pointRadius: 2,
+        },
+      ],
+    },
+    options: {
+      title: {
+        display: true,
+        text: 'Vehicle Speed Profile (m/s)',
+        fontColor: '#0f172a',
+        fontSize: 13,
+        fontFamily: 'Segoe UI',
+      },
+      legend: {
+        position: 'bottom',
+        labels: { fontSize: 9, boxWidth: 10, fontFamily: 'Segoe UI' },
+      },
+      scales: {
+        xAxes: [{ scaleLabel: { display: true, labelString: 'Time (s)', fontSize: 9, fontFamily: 'Segoe UI' } }],
+        yAxes: [{ scaleLabel: { display: true, labelString: 'Speed (m/s)', fontSize: 9, fontFamily: 'Segoe UI' } }],
+      },
+    },
+  };
+
+  const netChartConfig = {
+    type: 'line',
+    data: {
+      labels: downsampled.map((s) => `${s.t.toFixed(1)}s`),
+      datasets: [
+        {
+          label: 'Spacing Error (m)',
+          data: downsampled.map((s) => Number(s.spacingError.toFixed(3))),
+          borderColor: '#ea580c',
+          fill: false,
+          borderWidth: 2,
+          pointRadius: 2,
+        },
+        {
+          label: 'E2E Delay (ms)',
+          data: downsampled.map((s) => Number(s.delayMs.toFixed(1))),
+          borderColor: '#d97706',
+          fill: false,
+          borderWidth: 2,
+          pointRadius: 2,
+        },
+      ],
+    },
+    options: {
+      title: {
+        display: true,
+        text: 'Spacing Error & E2E Delay',
+        fontColor: '#0f172a',
+        fontSize: 13,
+        fontFamily: 'Segoe UI',
+      },
+      legend: {
+        position: 'bottom',
+        labels: { fontSize: 9, boxWidth: 10, fontFamily: 'Segoe UI' },
+      },
+      scales: {
+        xAxes: [{ scaleLabel: { display: true, labelString: 'Time (s)', fontSize: 9, fontFamily: 'Segoe UI' } }],
+        yAxes: [{ scaleLabel: { display: true, labelString: 'Measured Metrics', fontSize: 9, fontFamily: 'Segoe UI' } }],
+      },
+    },
+  };
+
+  const speedChartUrl = `https://quickchart.io/chart?w=380&h=240&bkg=white&c=${encodeURIComponent(JSON.stringify(speedChartConfig))}`;
+  const netChartUrl = `https://quickchart.io/chart?w=380&h=240&bkg=white&c=${encodeURIComponent(JSON.stringify(netChartConfig))}`;
+
+  let html = `
+    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+    <head>
+      <meta charset="utf-8">
+      <!--[if gte mso 9]>
+      <xml>
+        <x:ExcelWorkbook>
+          <x:ExcelWorksheets>
+            <x:ExcelWorksheet>
+              <x:Name>Simulation Report</x:Name>
+              <x:WorksheetOptions>
+                <x:DisplayGridlines/>
+              </x:WorksheetOptions>
+            </x:ExcelWorksheet>
+          </x:ExcelWorksheets>
+        </x:ExcelWorkbook>
+      </xml>
+      <![endif]-->
+      <style>
+        body { font-family: 'Segoe UI', sans-serif; }
+        .num { mso-number-format:"0\\.000"; }
+        .num-2 { mso-number-format:"0\\.00"; }
+        .num-1 { mso-number-format:"0\\.0"; }
+        .num-int { mso-number-format:"0"; }
+      </style>
+    </head>
+    <body>
+      <table style="border-collapse: collapse;">
+        <!-- Title Block -->
+        <tr>
+          <td colspan="10" style="${greenTitleStyle}">5G V2V PLATOONING SIMULATION REPORT</td>
+        </tr>
+        <tr><td colspan="10" style="height: 15px;"></td></tr>
+
+        <!-- Side-by-side Overview and Scorecard -->
+        <tr>
+          <td colspan="4" style="${greenHeaderStyle}">OVERVIEW</td>
+          <td style="width: 25px;"></td>
+          <td colspan="5" style="${greenHeaderStyle}">BUDGET VS. ACTUAL TARGETS (VERIFICATION SCORECARD)</td>
+        </tr>
+        
+        <tr>
+          <td style="${headerStyle}">Session ID</td>
+          <td colspan="3" style="${cellStyle}">${analysis.id}</td>
+          <td></td>
+          <td style="${headerStyle}">Experiment Metric</td>
+          <td style="${headerStyle}">Safety Target</td>
+          <td style="${headerStyle}">Measured Value</td>
+          <td style="${headerStyle}">Status</td>
+          <td style="${headerStyle}">Reference Standard</td>
+        </tr>
+        
+        <tr>
+          <td style="${headerStyle}">Created At</td>
+          <td colspan="3" style="${cellStyle}">${meta?.createdAt ?? new Date().toLocaleString()}</td>
+          <td></td>
+          <td style="${cellStyle}">${scorecard[0].label}</td>
+          <td style="${cellStyle}">${scorecard[0].target}</td>
+          <td style="${cellStyle}">${scorecard[0].measured}</td>
+          <td style="${scorecard[0].pass ? passStyle : failStyle}">${scorecard[0].pass ? 'PASS' : 'FAIL'}</td>
+          <td style="${cellStyle}">${scorecard[0].reference}</td>
+        </tr>
+        
+        <tr>
+          <td style="${headerStyle}">Duration</td>
+          <td colspan="3" style="${cellStyle}">${meta?.durationSec ? meta.durationSec.toFixed(1) + ' s' : 'N/A'}</td>
+          <td></td>
+          <td style="${cellStyle}">${scorecard[1].label}</td>
+          <td style="${cellStyle}">${scorecard[1].target}</td>
+          <td style="${cellStyle}">${scorecard[1].measured}</td>
+          <td style="${scorecard[1].pass ? passStyle : failStyle}">${scorecard[1].pass ? 'PASS' : 'FAIL'}</td>
+          <td style="${cellStyle}">${scorecard[1].reference}</td>
+        </tr>
+
+        <tr>
+          <td style="${headerStyle}">V2V Topology</td>
+          <td colspan="3" style="${cellStyle}">${localStorage.getItem('sim-default-topology') || 'Hybrid'}</td>
+          <td></td>
+          <td style="${cellStyle}">${scorecard[2].label}</td>
+          <td style="${cellStyle}">${scorecard[2].target}</td>
+          <td style="${cellStyle}">${scorecard[2].measured}</td>
+          <td style="${scorecard[2].pass ? passStyle : failStyle}">${scorecard[2].pass ? 'PASS' : 'FAIL'}</td>
+          <td style="${cellStyle}">${scorecard[2].reference}</td>
+        </tr>
+
+        <tr>
+          <td style="${headerStyle}">OBU Node Count</td>
+          <td colspan="3" style="${cellStyle}">${analysis.series.length > 0 ? '4 Nodes (1 Leader, 3 Followers)' : 'N/A'}</td>
+          <td></td>
+          <td style="${cellStyle}">${scorecard[3].label}</td>
+          <td style="${scorecard[3].target}</td>
+          <td style="${scorecard[3].measured}</td>
+          <td style="${scorecard[3].pass ? passStyle : failStyle}">${scorecard[3].pass ? 'PASS' : 'FAIL'}</td>
+          <td style="${cellStyle}">${scorecard[3].reference}</td>
+        </tr>
+
+        <tr>
+          <td style="${headerStyle}">Result Status</td>
+          <td colspan="3" style="${overallPass ? passStyle : failStyle}">${overallPass ? 'ALL TARGETS PASSED' : 'SOME TARGETS FAILED'}</td>
+          <td></td>
+          <td style="${cellStyle}">${scorecard[4].label}</td>
+          <td style="${cellStyle}">${scorecard[4].target}</td>
+          <td style="${cellStyle}">${scorecard[4].measured}</td>
+          <td style="${scorecard[4].pass ? passStyle : failStyle}">${scorecard[4].pass ? 'PASS' : 'FAIL'}</td>
+          <td style="${cellStyle}">${scorecard[4].reference}</td>
+        </tr>
+
+        <tr>
+          <td colspan="4" style="${cellStyle}"></td>
+          <td></td>
+          <td style="${cellStyle}">${scorecard[5].label}</td>
+          <td style="${scorecard[5].target}</td>
+          <td style="${scorecard[5].measured}</td>
+          <td style="${scorecard[5].pass ? passStyle : failStyle}">${scorecard[5].pass ? 'PASS' : 'FAIL'}</td>
+          <td style="${cellStyle}">${scorecard[5].reference}</td>
+        </tr>
+
+        <tr><td colspan="10" style="height: 20px;"></td></tr>
+
+        <!-- Embedded Graphical Charts Section -->
+        <tr>
+          <td colspan="4" style="${greenHeaderStyle}">VEHICLE SPEED DYNAMICS (GRAPH)</td>
+          <td></td>
+          <td colspan="5" style="${greenHeaderStyle}">FORMATION ACCURACY & LATENCY (GRAPH)</td>
+        </tr>
+        <tr>
+          <td colspan="4" style="text-align: center; vertical-align: middle; background-color: #ffffff; padding: 12px; border: 1px solid #d1d5db; height: 260px;">
+            <img src="${speedChartUrl}" width="380" height="240" alt="Speed Dynamics Chart" />
+          </td>
+          <td></td>
+          <td colspan="5" style="text-align: center; vertical-align: middle; background-color: #ffffff; padding: 12px; border: 1px solid #d1d5db; height: 260px;">
+            <img src="${netChartUrl}" width="380" height="240" alt="Network Spacing Error Chart" />
+          </td>
+        </tr>
+
+        <tr><td colspan="10" style="height: 20px;"></td></tr>
+
+        <!-- Telemetry Log Header -->
+        <tr>
+          <td colspan="10" style="${greenHeaderStyle}">TELEMETRY TIME SERIES LOG (${analysis.series.length} samples)</td>
+        </tr>
+        
+        <tr>
+          <td style="${headerStyle}">Time (s)</td>
+          <td style="${headerStyle}">E2E Delay (ms)</td>
+          <td style="${headerStyle}">Packet Loss (%)</td>
+          <td style="${headerStyle}">Spacing Error (m)</td>
+          <td style="${headerStyle}">SSI</td>
+          <td style="${headerStyle}">RSU Signal (dBm)</td>
+          <td style="${headerStyle}">Leader Speed (m/s)</td>
+          <td style="${headerStyle}">F1 Speed (m/s)</td>
+          <td style="${headerStyle}">F2 Speed (m/s)</td>
+          <td style="${headerStyle}">F3 Speed (m/s)</td>
+        </tr>
+  `;
+
+  analysis.series.forEach((s, idx) => {
+    const rowBg = idx % 2 === 0 ? "background-color: #f9fafb;" : "background-color: #ffffff;";
+    const customCellStyle = `${cellStyle} ${rowBg}`;
+    html += `
+      <tr>
+        <td style="${customCellStyle}" class="num-2">${s.t.toFixed(2)}</td>
+        <td style="${customCellStyle}" class="num-1">${s.delayMs.toFixed(1)}</td>
+        <td style="${customCellStyle}" class="num-2">${s.packetLoss.toFixed(2)}</td>
+        <td style="${customCellStyle}" class="num">${s.spacingError.toFixed(3)}</td>
+        <td style="${customCellStyle}" class="num">${s.stringStabilityIndex.toFixed(4)}</td>
+        <td style="${customCellStyle}" class="num-1">${s.rsuSignalDbm.toFixed(1)}</td>
+        <td style="${customCellStyle}" class="num-2">${s.speedLeader.toFixed(2)}</td>
+        <td style="${customCellStyle}" class="num-2">${s.speedF1.toFixed(2)}</td>
+        <td style="${customCellStyle}" class="num-2">${s.speedF2.toFixed(2)}</td>
+        <td style="${customCellStyle}" class="num-2">${s.speedF3.toFixed(2)}</td>
+      </tr>
+    `;
+  });
+
+  html += `
+      </table>
+    </body>
+    </html>
+  `;
+
+  const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `V2V_Simulation_Report_${analysis.id}.xls`;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 export function AnalysisPage({ analysis, meta, onClose }: Props) {
@@ -329,12 +609,14 @@ export function AnalysisPage({ analysis, meta, onClose }: Props) {
         </div>
         <div className="analysis-header-actions">
           <button
-            className="btn ghost no-print"
-            onClick={() => exportCsv(analysis, meta)}
-            title="Download as semicolon-delimited CSV (Excel-compatible)"
+            className="btn primary no-print"
+            onClick={() => exportExcel(analysis, meta)}
+            title="Download beautifully formatted Excel dashboard"
+            style={{ backgroundColor: '#059669', borderColor: '#059669', color: '#ffffff' }}
           >
-            ⬇ Export CSV
+            📊 Export Excel Dashboard
           </button>
+
           <button
             className="btn ghost no-print"
             onClick={() => window.print()}

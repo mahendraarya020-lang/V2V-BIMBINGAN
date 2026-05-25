@@ -4,6 +4,7 @@ import type { SimulationState } from '../types/sim'
 type LogEntry = {
   timestampS: number
   e2eDelayMs: number
+  timestampDeviationMs: number
   packetLossPercent: number
   leaderSpeedMs: number
   avgPlatoonSpeedMs: number
@@ -43,6 +44,7 @@ export function useDataLogger(currentState: SimulationState | null) {
     const headers = [
       'Timestamp (s)',
       'End-to-End Delay (ms)',
+      'Time Sync Deviation (ms)',
       'Packet Loss (%)',
       'Leader Speed (m/s)',
       'Average Platoon Speed (m/s)',
@@ -55,6 +57,7 @@ export function useDataLogger(currentState: SimulationState | null) {
     const rows = logs.map((log) => [
       log.timestampS.toFixed(3),
       log.e2eDelayMs.toFixed(1),
+      log.timestampDeviationMs.toFixed(3),
       log.packetLossPercent.toFixed(2),
       log.leaderSpeedMs.toFixed(3),
       log.avgPlatoonSpeedMs.toFixed(3),
@@ -106,6 +109,7 @@ export function useDataLogger(currentState: SimulationState | null) {
       logsRef.current.push({
         timestampS: elapsedS,
         e2eDelayMs: st.telemetry.endToEndDelayMs,
+        timestampDeviationMs: st.telemetry.timestampDeviationMs,
         packetLossPercent: st.params.packetLossPercent,
         leaderSpeedMs: leader ? leader.speed : 0,
         avgPlatoonSpeedMs: st.telemetry.averagePlatoonSpeedMs,

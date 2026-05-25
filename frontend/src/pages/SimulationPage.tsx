@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ControlPanel } from '../components/ControlPanel'
 import { SimulationCanvas } from '../components/SimulationCanvas'
@@ -14,14 +14,25 @@ import { AnalysisPage } from './AnalysisPage'
 export function SimulationPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { state, isConnected, analysis, savedMeta, lastCollision, lastTransferRefused, actions } = useSimulationSocket()
+  const { state, isConnected, analysis, savedMeta, lastCollision, lastTransferRefused, lastCooperativeInit, lastCooperativeReady, actions } = useSimulationSocket()
   const { isRecording, recordDurationS, startRecording, stopRecordingAndDownload } = useDataLogger(state)
   const [showAnalysis, setShowAnalysis] = useState(false)
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null)
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('theme') as 'dark' | 'light') ?? 'dark'
+  })
   const [pendingSwap, setPendingSwap] = useState<{ idA: string; idB: string; triggeredAt: number } | null>(null)
   const [toasts, setToasts] = useState<ToastItem[]>([])
+  const [consoleLogs, setConsoleLogs] = useState<Array<{ id: number; timestamp: string; title: string; message: string; kind: 'info' | 'warn' | 'error' }>>([])
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(false)
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))
   const swapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const canvasWrapRef = useRef<HTMLElement | null>(null)
   const lastControlModeRef = useRef<'ACC' | 'CACC' | null>(null)
@@ -38,6 +49,16 @@ export function SimulationPage() {
   function pushToast(item: Omit<ToastItem, 'id'>) {
     const id = nextToastIdRef.current++
     setToasts((prev) => [...prev.slice(-4), { id, ...item }])
+
+    // Add to console log (Recommendation 4)
+    const now = new Date()
+    const pad = (n: number, size = 2) => String(n).padStart(size, '0')
+    const timestamp = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${pad(now.getMilliseconds(), 3)}`
+    
+    setConsoleLogs((prev) => [
+      ...prev.slice(-99), // Limit history to last 100 entries
+      { id, timestamp, title: item.title, message: item.message, kind: item.kind ?? 'info' }
+    ])
   }
 
   const defaultPlatoonCount = state ? Array.from(new Set(state.vehicles.map((v) => v.y))).length : 2
@@ -70,6 +91,24 @@ export function SimulationPage() {
     if (!lastTransferRefused) return
     pushToast({ title: 'Transfer Ditolak (Phase 1)', message: lastTransferRefused.reason, kind: 'warn' })
   }, [lastTransferRefused])
+
+  useEffect(() => {
+    if (!lastCooperativeInit) return
+    pushToast({
+      title: '5G V2X Cooperative Gap',
+      message: `Gap creation initiated for vehicle ${lastCooperativeInit.vehicleId.toUpperCase()} to Platoon ${String.fromCharCode(65 + lastCooperativeInit.targetLane)}`,
+      kind: 'info'
+    })
+  }, [lastCooperativeInit])
+
+  useEffect(() => {
+    if (!lastCooperativeReady) return
+    pushToast({
+      title: 'V2X Gap Created',
+      message: `${lastCooperativeReady.message}`,
+      kind: 'info'
+    })
+  }, [lastCooperativeReady])
 
   useEffect(() => {
     if (!state) return
@@ -215,6 +254,16 @@ export function SimulationPage() {
         {/* Action buttons */}
         <div className="ck-navbar-actions">
           <button
+            className="ck-btn ck-btn-ghost"
+            onClick={toggleTheme}
+            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            style={{ fontSize: '1.05rem', padding: '0.4rem 0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            type="button"
+          >
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
+
+          <button
             className={`ck-btn ${isRecording ? 'ck-btn-danger' : 'ck-btn-ghost'}`}
             onClick={isRecording ? stopRecordingAndDownload : startRecording}
             type="button"
@@ -247,7 +296,7 @@ export function SimulationPage() {
         {/* Left: Control Center */}
         <ControlPanel
           params={state.params}
-          vehicleIds={state.vehicles.map((v) => v.id)}
+          vehicles={state.vehicles}
           followerCount={followerCount}
           onUpdateParams={actions.updateParams}
           onFollowerCountChange={actions.setFollowerCount}
@@ -283,13 +332,107 @@ export function SimulationPage() {
             pendingSwap={pendingSwap}
             running={state.running}
             avgSpeedMs={telemetry.averagePlatoonSpeedMs}
+            theme={theme}
           />
 
           {selectedVehicleId && (
             <VehicleDetail
               vehicle={state.vehicles.find((v) => v.id === selectedVehicleId) ?? null}
+              vehicles={state.vehicles}
+              onSwap={handleSwap}
             />
           )}
+
+          {/* V2X Live Event Console (Recommendation 4) */}
+          <div className="ck-console card" style={{
+            marginTop: '0.8rem',
+            backgroundColor: '#09090b',
+            border: '1px solid rgba(129, 140, 248, 0.16)',
+            borderRadius: '8px',
+            fontFamily: 'Consolas, Monaco, monospace',
+            fontSize: '0.74rem',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}>
+            <div style={{
+              backgroundColor: 'rgba(129, 140, 248, 0.05)',
+              padding: '6px 12px',
+              borderBottom: '1px solid rgba(129, 140, 248, 0.1)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              userSelect: 'none'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#818cf8', fontWeight: 'bold' }}>
+                <span className="blink-dot" style={{
+                  width: '6px',
+                  height: '6px',
+                  backgroundColor: '#34d399',
+                  borderRadius: '50%',
+                  display: 'inline-block'
+                }} />
+                <span>📟 V2X LIVE EVENT CONSOLE</span>
+              </div>
+              <button
+                onClick={() => setConsoleLogs([])}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#71717a',
+                  cursor: 'pointer',
+                  fontSize: '0.68rem',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  backgroundColor: 'rgba(255,255,255,0.03)'
+                }}
+                type="button"
+              >
+                Clear Log
+              </button>
+            </div>
+            <div style={{
+              padding: '8px 12px',
+              maxHeight: '120px',
+              minHeight: '80px',
+              overflowY: 'auto',
+              color: '#d4d4d8',
+              lineHeight: '1.4',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px',
+              textAlign: 'left'
+            }}
+            ref={(el) => {
+              if (el) el.scrollTop = el.scrollHeight
+            }}>
+              {consoleLogs.length === 0 ? (
+                <div style={{ color: '#52525b', fontStyle: 'italic' }}>
+                  [System] Listening to 5G NR-V2X channel... Console initialized.
+                </div>
+              ) : (
+                consoleLogs.map((log) => {
+                  const logColor = log.kind === 'error' ? '#f87171' : log.kind === 'warn' ? '#fbbf24' : '#34d399'
+                  return (
+                    <div key={`log-${log.id}`} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                      <span style={{ color: '#71717a', flexShrink: 0 }}>[{log.timestamp}]</span>
+                      <span style={{ color: logColor, fontWeight: 'bold', flexShrink: 0 }}>[{log.title.toUpperCase()}]</span>
+                      <span style={{ color: '#e4e4e7' }}>{log.message}</span>
+                    </div>
+                  )
+                })
+              )}
+              <div className="terminal-cursor" style={{ color: '#34d399', fontWeight: 'bold', display: 'flex', alignItems: 'center' }}>
+                <span>&gt;&nbsp;</span>
+                <span style={{
+                  width: '6px',
+                  height: '11px',
+                  backgroundColor: '#34d399',
+                  display: 'inline-block'
+                }} />
+              </div>
+            </div>
+          </div>
         </section>
 
         {/* Right: Telemetry */}

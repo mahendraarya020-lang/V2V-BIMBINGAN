@@ -20,7 +20,7 @@ export type VehicleState = {
   crashed: boolean
 
   // ── Inter-Platoon Transfer FSM ────────────────────────────────────────────
-  transferPhase?: 'departing' | 'in-transit' | 'stabilizing' | null
+  transferPhase?: 'waiting-for-gap' | 'departing' | 'in-transit' | 'stabilizing' | null
   transferTargetLane?: number
   stabilizeStartMs?: number
   headwayOverride?: number
@@ -53,6 +53,7 @@ export type SimulationTelemetry = {
   rsuSignalDbm: number
   networkDelayMs: number
   endToEndDelayMs: number
+  timestampDeviationMs: number
   stringStabilityIndex: number
   spacingError: number
   maxSpacingError: number

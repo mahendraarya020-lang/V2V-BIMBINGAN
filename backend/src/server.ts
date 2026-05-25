@@ -83,7 +83,7 @@ const params: SimulationParams = {
   standstillDistance: 8,
   latencyMs: 10,
   packetLossPercent: 0.5,
-  channelBandwidthHz: 20_000_000,
+  channelBandwidthHz: 1_000_000_000,
   v2vTopology: 'Hybrid',
   dynamicPathLoss: false,
 }
@@ -161,7 +161,7 @@ function recomputePredecessorIds(platoon: VehicleState[]): VehicleState[] {
 
 /** Minimum longitudinal clearance required before accepting a lane merge (m). */
 function minMergeGapRequiredM(): number {
-  return params.standstillDistance + params.targetSpeed * params.timeHeadway * 1.5
+  return params.standstillDistance + params.targetSpeed * params.timeHeadway * 1.2
 }
 
 /** Neighbors of merge longitude vAx on destination platoon (sorted desc by x). */
@@ -218,6 +218,43 @@ function createPlatoons(count: number): VehicleState[][] {
 
 let platoons: VehicleState[][] = createPlatoons(DEFAULT_PLATOON_COUNT)
 emulators = platoons.map(() => new NetworkEmulator())
+
+type HistorySample = {
+  x: number
+  speed: number
+  accel: number
+  timestamp: number
+}
+
+const V2vStateHistory = new Map<string, HistorySample[]>()
+
+function saveVehicleStateToHistory(id: string, x: number, speed: number, accel: number): void {
+  const history = V2vStateHistory.get(id) ?? []
+  history.push({ x, speed, accel, timestamp: Date.now() })
+  if (history.length > 200) history.shift()
+  V2vStateHistory.set(id, history)
+}
+
+function getDelayedVehicleState(id: string, latencyMs: number, fallback: { x: number, speed: number, accel: number }): HistorySample {
+  const history = V2vStateHistory.get(id)
+  if (!history || history.length === 0) {
+    return { x: fallback.x, speed: fallback.speed, accel: fallback.accel, timestamp: Date.now() - latencyMs }
+  }
+  const targetTime = Date.now() - latencyMs
+  let closest = history[0]
+  let minDiff = Math.abs(closest.timestamp - targetTime)
+  for (const sample of history) {
+    const diff = Math.abs(sample.timestamp - targetTime)
+    if (diff < minDiff) {
+      minDiff = diff
+      closest = sample
+    }
+  }
+  return closest
+}
+
+let lastPlatoonTimestampDeviationMs = 0
+let lastPlatoonMultiHopDelayMs = 0
 
 function effectiveLatency(): number {
   return Date.now() < latencySpikeUntil ? Math.max(params.latencyMs, 50) : params.latencyMs
@@ -363,7 +400,7 @@ function getState(): SimulationState {
   const avgPlatoonSpeedMs = mainPlatoon.length > 0
     ? mainPlatoon.reduce((sum, vehicle) => sum + vehicle.speed, 0) / mainPlatoon.length
     : 0
-  const endToEndDelayMs = effectiveLatency() * Math.max(1, mainPlatoon.length - 1)
+  const endToEndDelayMs = lastPlatoonMultiHopDelayMs > 0 ? lastPlatoonMultiHopDelayMs : (effectiveLatency() * Math.max(1, mainPlatoon.length - 1))
   const channelMHz = params.channelBandwidthHz / 1e6
   const utilization = Math.min(100, ((vehicles.length * 0.05) / Math.max(1, channelMHz)) * 100)
 
@@ -390,6 +427,7 @@ function getState(): SimulationState {
       rsuSignalDbm,
       networkDelayMs: effectiveLatency(),
       endToEndDelayMs: Number(endToEndDelayMs.toFixed(1)),
+      timestampDeviationMs: Number(lastPlatoonTimestampDeviationMs.toFixed(3)),
       stringStabilityIndex: Number(Math.max(0, 1 - Math.abs(spacingError) / 20).toFixed(3)),
       spacingError: Number(spacingError.toFixed(2)),
       maxSpacingError: Number(maxSpacingError.toFixed(2)),
@@ -406,10 +444,10 @@ function getState(): SimulationState {
 }
 
 
-// â”€â”€â”€ Collision detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ──────────────────────────────── Collision detection ──────────────────────────────────────────────
 
 /**
- * Check ALL vehicle pairs with 2-D Euclidean distance.
+ * Check ALL vehicle pairs with bounding box overlap check.
  * Converts `wy` (lane units) to metres using LANE_WIDTH_M before comparison.
  * When a collision is found, both vehicles are instantly crashed and frozen.
  * Returns the collision event payload (or null if no new collision).
@@ -425,11 +463,13 @@ function detectAndApplyCollisions(): { between: [string, string]; gapMeters: num
       const b = all[j]
       if (a.crashed || b.crashed) continue
 
-      const dx = a.x - b.x
-      const dy = (a.wy - b.wy) * LANE_WIDTH_M   // convert lane units â†’ metres
-      const dist = Math.sqrt(dx * dx + dy * dy)
+      const dx = Math.abs(a.x - b.x)
+      const dy = Math.abs(a.wy - b.wy) * LANE_WIDTH_M
 
-      if (dist < CRASH_DISTANCE_M) {
+      // Bounding box collision check: 
+      // vehicles are 4.5m long and ~1.8m wide. We consider overlap if:
+      // longitudinal gap is less than 4.5m and lateral gap is less than 2.0m.
+      if (dx < VEHICLE_LENGTH_M && dy < 2.0) {
         // Crash both vehicles: freeze motion, set crashed flag
         platoons = platoons.map((platoon) =>
           platoon.map((v) =>
@@ -442,6 +482,7 @@ function detectAndApplyCollisions(): { between: [string, string]; gapMeters: num
         collisionCooldownUntil = Date.now() + 2000
         session.recordCollision()
 
+        const dist = Math.sqrt(dx * dx + dy * dy)
         return {
           between: [a.id, b.id],
           gapMeters: Number(dist.toFixed(2)),
@@ -466,9 +507,54 @@ function stepPlatoon(
   const leaderVeh = sorted[0]
   const humanBrake = isPrimaryPlatoon && Date.now() < humanBrakingUntil ? 0.9 : 0
   const speedRegBrake = leaderVeh.speed > params.targetSpeed ? 0.3 : 0
-  const leaderBrake = Math.max(isPrimaryPlatoon ? manualInput.brake : 0, humanBrake, speedRegBrake)
-  const leaderThrottle = humanBrake > 0 ? 0 : isPrimaryPlatoon ? manualInput.throttle : 0.4
-  const nextLeader = updateLeader(leaderVeh, dtSec, leaderThrottle, leaderBrake)
+
+  // Dynamic 5G V2X Leader Gap Creation Deceleration
+  // ONLY brake the leader when another vehicle is actively in 'waiting-for-gap' targeting THIS lane.
+  // The leader's own headwayOverride (from a completed transfer) must NOT trigger cooperative braking.
+  const thisLane = sorted[0].y
+  const hasActiveGapRequest = platoons.some(p =>
+    p.some(v => v.transferPhase === 'waiting-for-gap' && v.transferTargetLane === thisLane)
+  )
+  const coopBrake = hasActiveGapRequest ? 0.4 : 0
+  const coopThrottleMult = hasActiveGapRequest ? 0.2 : 1
+
+  // Active speed regulation for non-primary platoon leaders (adaptive cruise control)
+  const speedDeficit = params.targetSpeed - leaderVeh.speed
+  const autoThrottle = speedDeficit > 0
+    ? Math.min(0.6, speedDeficit * 0.15)  // Proportional throttle gain
+    : 0
+  const baseThrottle = isPrimaryPlatoon ? manualInput.throttle : Math.max(0.4, autoThrottle)
+
+  const leaderBrake = Math.max(
+    isPrimaryPlatoon ? manualInput.brake : 0,
+    humanBrake,
+    speedRegBrake,
+    coopBrake
+  )
+  const leaderThrottle = humanBrake > 0 ? 0 : baseThrottle * coopThrottleMult
+  let nextLeader = updateLeader(leaderVeh, dtSec, leaderThrottle, leaderBrake)
+  saveVehicleStateToHistory(nextLeader.id, nextLeader.x, nextLeader.speed, nextLeader.accel)
+  const now = Date.now()
+
+  let totalSyncDeviation = 0
+  let totalHopDelay = 0
+
+  // ── Leader stabilization exit check ──────────────────────────────────────
+  // The stabilization exit at L521 only runs for followers (inside the i>=1 loop).
+  // If the transferred vehicle became the leader, we must also clean it up here.
+  if (nextLeader.transferPhase === 'stabilizing' && nextLeader.stabilizeStartMs !== undefined) {
+    const leaderStabElapsed = (now - nextLeader.stabilizeStartMs) / 1000
+    if (leaderStabElapsed >= TRANSFER_COOLDOWN_S) {
+      nextLeader = {
+        ...nextLeader,
+        transferPhase: null,
+        headwayOverride: undefined,
+        forceAcc: false,
+        stabilizeStartMs: undefined,
+      }
+    }
+  }
+
 
   const lossToUse = params.dynamicPathLoss
     ? Math.max(dynamicPathLossForVehicle(nextLeader.x), Date.now() < packetDropUntil ? 25 : 0)
@@ -488,7 +574,6 @@ function stepPlatoon(
 
   const useAccFallback = lossToUse >= ACC_FALLBACK_LOSS_THRESHOLD
   const nextVehicles: VehicleState[] = [nextLeader]
-  const now = Date.now()
 
   for (let i = 1; i < sorted.length; i++) {
     const current = sorted[i]
@@ -496,9 +581,13 @@ function stepPlatoon(
     let predIndex = predId ? sorted.findIndex((v) => v.id === predId) : -1
     if (predIndex < 0 || predIndex >= i || (i > 1 && predIndex === 0)) predIndex = i - 1
 
-    const preceding =
+    const preceding: VehicleState =
       predIndex === 0
-        ? delayedLeader
+        ? {
+            ...nextLeader,
+            x: delayedLeader.x,
+            speed: delayedLeader.speed,
+          }
         : (nextVehicles[predIndex] ?? sorted[predIndex])
 
     // ── Phase 4: Stabilization cooldown ────────────────────────────────
@@ -530,9 +619,12 @@ function stepPlatoon(
     if (updatedCurrent.transferPhase === 'in-transit') {
       const targetPlatoonSpeed = sorted[0]?.speed ?? updatedCurrent.speed
       const alpha = Math.min(1.2 * dtSec, 1)
+      const syncedSpeed = updatedCurrent.speed + (targetPlatoonSpeed - updatedCurrent.speed) * alpha
+      // Enforce minimum speed floor to prevent stalling mid-lane-change
+      const minTransitSpeed = params.targetSpeed * 0.5
       updatedCurrent = {
         ...updatedCurrent,
-        speed: updatedCurrent.speed + (targetPlatoonSpeed - updatedCurrent.speed) * alpha,
+        speed: Math.max(syncedSpeed, minTransitSpeed),
       }
     }
 
@@ -546,18 +638,40 @@ function stepPlatoon(
     const thisTickAccFallback = useAccFallback || (updatedCurrent.forceAcc ?? false)
       || (params.dynamicPathLoss && vehicleDynLoss >= ACC_FALLBACK_LOSS_THRESHOLD)
 
-    // Topology-Aware CACC Input
-    // Note: `preceding` may be a LeaderPacket (predIndex===0) which lacks `accel` — fallback to 0
-    const precedingAccel = 'accel' in preceding ? (preceding as VehicleState).accel : 0
+    // Topology-Aware CACC Input with emulated Multi-Hop delay & Time Sync Jitter
+    const baseLatency = effectiveLatency()
+    const precedingLatency = params.v2vTopology === 'PF'
+      ? baseLatency + (i - 1) * 5
+      : baseLatency
+    const leaderLatency = params.v2vTopology === 'PF'
+      ? baseLatency + (i - 1) * 5
+      : baseLatency
+
+    // Time Synchronization Jitter Injection (< 5ms deviation)
+    const syncDev = (Math.random() - 0.5) * 5.0 // Random Jitter between -2.5ms and +2.5ms
+    const finalPrecedingLatency = Math.max(0, precedingLatency + syncDev)
+    const finalLeaderLatency = Math.max(0, leaderLatency + syncDev)
+
+    if (isPrimaryPlatoon) {
+      totalSyncDeviation += Math.abs(syncDev)
+      totalHopDelay += leaderLatency
+    }
+
+    // Retrieve delayed preceding state from V2vStateHistory
+    const precedingState = getDelayedVehicleState(preceding.id, finalPrecedingLatency, preceding)
+    // Retrieve delayed leader state from V2vStateHistory
+    const leaderState = getDelayedVehicleState(nextLeader.id, finalLeaderLatency, nextLeader)
+
+    const precedingAccel = precedingState.accel
     const caccInput: CaccInput = {
-      predecessorX: preceding.x,
-      leaderX: nextLeader.x,
+      predecessorX: preceding.x, // Radar measurements (zero V2V communication latency)
+      leaderX: leaderState.x,    // V2V communications (with emulated latency)
       followerX: updatedCurrent.x,
       followerSpeed: updatedCurrent.speed,
-      predecessorSpeed: preceding.speed,
-      leaderSpeed: nextLeader.speed,
-      leaderAccel: nextLeader.accel,
-      predecessorAccel: precedingAccel,
+      predecessorSpeed: preceding.speed, // Radar measurements (zero V2V communication latency)
+      leaderSpeed: leaderState.speed,     // V2V communications (with emulated latency)
+      leaderAccel: leaderState.accel,     // V2V communications (with emulated latency)
+      predecessorAccel: precedingAccel,   // V2V communications (with emulated latency)
       timeHeadway: effectiveHeadway,
       standstillDistance: params.standstillDistance,
       topology: params.v2vTopology,
@@ -591,27 +705,150 @@ function stepPlatoon(
     const spacingCritical = actualGap < desiredGap
     const maxDecelMs2 = spacingCritical ? FOLLOWER_EMERGENCY_DECEL_MS2 : FOLLOWER_MAX_DECEL_MS2
 
-    nextVehicles.push(
-      updateFollower(
-        { ...updatedCurrent, dynamicPacketLoss: vehicleDynLoss },
-        dtSec,
-        accelCmd,
-        { maxDecelMs2 },
-      ),
+    const updatedFollowerState = updateFollower(
+      { ...updatedCurrent, dynamicPacketLoss: vehicleDynLoss },
+      dtSec,
+      accelCmd,
+      { maxDecelMs2 },
     )
+    saveVehicleStateToHistory(updatedFollowerState.id, updatedFollowerState.x, updatedFollowerState.speed, updatedFollowerState.accel)
+    nextVehicles.push(updatedFollowerState)
+
+    if (isPrimaryPlatoon && i === sorted.length - 1) {
+      lastPlatoonTimestampDeviationMs = totalSyncDeviation / (sorted.length - 1)
+      lastPlatoonMultiHopDelayMs = totalHopDelay / (sorted.length - 1)
+    }
   }
 
   return nextVehicles
 }
 
-// â”€â”€â”€ Transfer FSM: Phase 3 â†’ 4 transition â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Transfer FSM: Cooperative Transitions ──────────────────────────────────
 /**
- * Called every tick. Scans all platoons for 'in-transit' vehicles whose wy has
- * converged to their targetLane (|wy - targetLane| < 0.05). When found, transitions
- * the vehicle to Phase 4 (stabilizing) with a 2-second cooldown, 1.5Ã— headway.
+ * Called every tick. Scans all platoons for cooperative transfers.
+ * 1. Checks 'waiting-for-gap' vehicles to see if destination platoon gap is ready.
+ * 2. Scans 'in-transit' vehicles to transition them to 'stabilizing' phase.
  */
 function stepTransferFsm(): void {
   const now = Date.now()
+
+  // Track active target successor IDs and tail-merging vehicles that need to slow down
+  const activeSuccessorIds = new Set<string>()
+  const activeWaitingVehiclesNeedBrake = new Set<string>()
+
+  // 1. Process vehicles in "waiting-for-gap" state
+  let migratedVehicle: VehicleState | null = null
+  let srcLaneOfMigrated = -1
+  let dstLaneOfMigrated = -1
+
+  platoons.forEach((platoon, lane) => {
+    platoon.forEach((v) => {
+      if (v.transferPhase === 'waiting-for-gap') {
+        const dstLane = v.transferTargetLane ?? 0
+        const dstPlatoon = platoons[dstLane] ?? []
+        const dstSorted = sortPlatoonByLongitudinal(dstPlatoon)
+        const { pred, succ } = findMergeNeighbors(dstSorted, v.x)
+        const minG = minMergeGapRequiredM()
+
+        // Dynamically update successor pointer as positions shift
+        v.transferSourceSuccessorId = succ?.id ?? undefined
+
+        if (succ) {
+          activeSuccessorIds.add(succ.id)
+        } else if (pred) {
+          // Merging behind the tail of the destination platoon.
+          // Since there is no successor to slow down, Vk (the waiting vehicle) must decelerate.
+          activeWaitingVehiclesNeedBrake.add(v.id)
+        }
+
+        let gapM = Infinity
+        if (pred && succ) {
+          gapM = pred.x - succ.x - VEHICLE_LENGTH_M
+        } else if (pred && !succ) {
+          gapM = pred.x - v.x - VEHICLE_LENGTH_M
+        } else if (!pred && succ) {
+          gapM = v.x - succ.x - VEHICLE_LENGTH_M
+        }
+
+        if (gapM >= minG) {
+          // Gap is ready! Record for migration.
+          migratedVehicle = {
+            ...v,
+            y: dstLane,
+            targetLane: dstLane,
+            transferPhase: 'in-transit' as const,
+            transferTargetLane: dstLane,
+            forceAcc: true,
+            headwayOverride: params.timeHeadway * STABILIZE_HEADWAY_MULT,
+            maneuverTimer: 0,
+            maneuverDuration: 2.5,
+            maneuverStartY: v.wy,
+            maneuverTargetY: dstLane,
+            transferSourceSuccessorId: succ?.id ?? undefined,
+          }
+          srcLaneOfMigrated = lane
+          dstLaneOfMigrated = dstLane
+        }
+      } else if (v.transferPhase === 'in-transit') {
+        if (v.transferSourceSuccessorId) {
+          activeSuccessorIds.add(v.transferSourceSuccessorId)
+        }
+      }
+    })
+  })
+
+  // Apply dynamic headway overrides for cooperative gap creation
+  platoons = platoons.map((platoon) =>
+    platoon.map((v) => {
+      // 1. Successor vehicles opening the merge slot
+      if (activeSuccessorIds.has(v.id)) {
+        return { ...v, headwayOverride: params.timeHeadway * 2.5, forceAcc: true }
+      }
+      // 2. Waiting-for-gap vehicles merging at the tail that must decelerate
+      if (activeWaitingVehiclesNeedBrake.has(v.id)) {
+        return { ...v, headwayOverride: params.timeHeadway * 2.5, forceAcc: true }
+      }
+      // 3. Clear headway overrides for any other vehicle not actively stabilizing or in-transit
+      if (v.transferPhase !== 'stabilizing' && v.transferPhase !== 'in-transit' && v.transferPhase !== 'waiting-for-gap') {
+        if (v.headwayOverride !== undefined) {
+          return { ...v, headwayOverride: undefined, forceAcc: false }
+        }
+      }
+      // For waiting-for-gap vehicles that do NOT need to brake, clear headway override
+      if (v.transferPhase === 'waiting-for-gap' && !activeWaitingVehiclesNeedBrake.has(v.id)) {
+        if (v.headwayOverride !== undefined) {
+          return { ...v, headwayOverride: undefined, forceAcc: false }
+        }
+      }
+      return v
+    })
+  )
+
+  // Perform migration if a vehicle is ready
+  if (migratedVehicle !== null) {
+    const vk = migratedVehicle as VehicleState
+    // Find the vehicle directly behind Vk in the source platoon.
+    const srcSorted = sortPlatoonByLongitudinal(platoons[srcLaneOfMigrated] ?? [])
+    const vkIndexInSrc = srcSorted.findIndex((v) => v.id === vk.id)
+    const vkSuccessor = srcSorted[vkIndexInSrc + 1]
+
+    // Remove from source platoon and reset its successor's spacing reference
+    platoons[srcLaneOfMigrated] = platoons[srcLaneOfMigrated]
+      .map((v) => (v.id === vkSuccessor?.id ? { ...v, accel: 0 } : v))
+      .filter((v) => v.id !== vk.id)
+
+    // Add to destination platoon
+    if (!platoons[dstLaneOfMigrated]) platoons[dstLaneOfMigrated] = []
+    platoons[dstLaneOfMigrated] = [...platoons[dstLaneOfMigrated], vk]
+    
+    io.emit('sim:transferCooperativeReady', {
+      vehicleId: vk.id,
+      targetLane: dstLaneOfMigrated,
+      message: `Gap created successfully! Initiating lateral V2V lane change maneuver.`,
+    })
+  }
+
+  // 2. Process lateral transition (Phase 3 -> Phase 4)
   platoons = platoons.map((platoon) =>
     platoon.map((v) => {
       if (v.transferPhase !== 'in-transit') return v
@@ -619,7 +856,20 @@ function stepTransferFsm(): void {
         ? v.maneuverTimer >= v.maneuverDuration
         : Math.abs((v.wy ?? v.y) - (v.transferTargetLane ?? v.y)) < 0.05
       if (hasArrived) {
-        // Arrived in new lane â€” transition to Phase 4: Stabilizing
+        // Arrived in new lane — transition to Phase 4: Stabilizing
+        
+        // If there was a successor that opened the gap, reset its headway override
+        const succId = v.transferSourceSuccessorId
+        if (succId) {
+          const dstLane = v.y
+          platoons[dstLane] = platoons[dstLane].map((u) => {
+            if (u.id === succId) {
+              return { ...u, headwayOverride: undefined, forceAcc: false }
+            }
+            return u
+          })
+        }
+
         return {
           ...v,
           transferPhase: 'stabilizing' as const,
@@ -628,7 +878,7 @@ function stepTransferFsm(): void {
           maneuverStartY: undefined,
           maneuverTargetY: undefined,
           stabilizeStartMs: now,
-          headwayOverride: (v.headwayOverride ?? 1.2), // already set at 1.5Ã— from Phase 3
+          headwayOverride: v.headwayOverride ?? (params.timeHeadway * 1.5),
           forceAcc: true,  // remain in ACC during cooldown
         }
       }
@@ -740,73 +990,77 @@ io.on('connection', (socket) => {
     if (!vA || !vB) return
 
     if (vA.y !== vB.y) {
-      // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-      // Inter-Platoon Member Transfer â€” 4-Phase FSM
+      // ════════════════════════════════════════════════════════════════════════════════════════════
+      // Inter-Platoon Member Transfer — 5-Phase FSM (Cooperative Gap Creation)
       // We treat vA as the transferring vehicle (Vk) moving to vB's platoon.
-      // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+      // ════════════════════════════════════════════════════════════════════════════════════════════
 
       const srcLane = vA.y
       const dstLane = vB.y
       const dstPlatoon = platoons[dstLane]
 
-      // â”€â”€ Phase 1: Negotiation â€” merge-slot longitudinal clearance (join-in-middle safe) â”€â”€
-      // Tail of destination platoon is the vehicle with the smallest X.
+      // ── Phase 1: Negotiation — check if slot is already open ──
       const dstSorted = dstPlatoon ? sortPlatoonByLongitudinal(dstPlatoon) : []
       const { pred, succ } = findMergeNeighbors(dstSorted, vA.x)
       const clearance = mergeSlotClearanceM(pred, succ, vA.x)
 
-      if (!clearance.ok) {
-        io.emit('sim:transferRefused', {
-          vehicleId: idA,
-          reason: `Merge slot too tight (${clearance.detail})`,
-        })
-        return
-      }
+      if (clearance.ok) {
+        // Gap is already large enough! Transition immediately.
+        const srcSorted = sortPlatoonByLongitudinal(platoons[srcLane] ?? [])
+        const vkIndexInSrc = srcSorted.findIndex((v) => v.id === vA.id)
+        const vkSuccessor = srcSorted[vkIndexInSrc + 1]
 
-      // â”€â”€ Phase 2: Departing â€” Vk switches to ACC, opens gap in source platoon â”€
-      // Find the vehicle directly behind Vk in the source platoon.
-      const srcSorted = sortPlatoonByLongitudinal(platoons[srcLane] ?? [])
-      const vkIndexInSrc = srcSorted.findIndex((v) => v.id === vA.id)
-      const vkSuccessor = srcSorted[vkIndexInSrc + 1] // vehicle behind Vk
+        const srcPlatoonWithoutVk = (platoons[srcLane] ?? []).map((v) => {
+          if (v.id === vkSuccessor?.id) {
+            return { ...v, accel: 0 }
+          }
+          return v
+        }).filter((v) => v.id !== vA.id)
 
-      // The successor's new predecessor becomes the vehicle that was in front of Vk.
-      // We achieve this by simply removing Vk from the source platoon â€” the
-      // stepPlatoon loop will naturally re-link i-1 â†’ i.
-      // The successor's integral is reset by zeroing its accel momentarily.
-      const srcPlatoonWithoutVk = (platoons[srcLane] ?? []).map((v) => {
-        if (v.id === vkSuccessor?.id) {
-          // Phase 2 â€” reset successor's spacing reference to prevent windup
-          return { ...v, accel: 0 }
+        platoons[srcLane] = srcPlatoonWithoutVk
+
+        const vkTransferring: VehicleState = {
+          ...vA,
+          y: dstLane,
+          targetLane: dstLane,
+          transferPhase: 'in-transit',
+          transferTargetLane: dstLane,
+          forceAcc: true,
+          headwayOverride: params.timeHeadway * STABILIZE_HEADWAY_MULT,
+          maneuverTimer: 0,
+          maneuverDuration: 2.5,
+          maneuverStartY: vA.wy,
+          maneuverTargetY: dstLane,
+          transferSourceSuccessorId: succ?.id ?? undefined,
         }
-        return v
-      }).filter((v) => v.id !== vA.id)
 
-      platoons[srcLane] = srcPlatoonWithoutVk
+        if (!platoons[dstLane]) platoons[dstLane] = []
+        platoons[dstLane] = [...platoons[dstLane], vkTransferring]
+      } else {
+        // Gap is too tight! Initiate V2X Cooperative Gap Creation.
+        if (succ) {
+          platoons[dstLane] = platoons[dstLane].map((v) =>
+            v.id === succ.id ? { ...v, headwayOverride: params.timeHeadway * 2.5, forceAcc: true } : v
+          )
+        }
+        
+        platoons[srcLane] = platoons[srcLane].map((v) =>
+          v.id === vA.id
+            ? {
+                ...v,
+                transferPhase: 'waiting-for-gap' as const,
+                transferTargetLane: dstLane,
+                transferSourceSuccessorId: succ?.id,
+              }
+            : v
+        )
 
-      // â”€â”€ Phase 3: In-Transit â€” set Vk's target lane for lateral movement â”€â”€â”€â”€
-      // Physics engine (steer() in physics.ts) will curve Vk via its heading.
-      // Vk is placed at the tail of the destination platoon.
-      const vkTransferring: VehicleState = {
-        ...vA,
-        y: dstLane,
-        targetLane: dstLane,
-        transferPhase: 'in-transit',
-        transferTargetLane: dstLane,
-        forceAcc: true,
-        headwayOverride: params.timeHeadway * STABILIZE_HEADWAY_MULT,
-        maneuverTimer: 0,
-        maneuverDuration: 2.5,
-        maneuverStartY: vA.wy,
-        maneuverTargetY: dstLane,
+        io.emit('sim:transferCooperativeInit', {
+          vehicleId: idA,
+          targetLane: dstLane,
+          reason: `Merge slot too tight (${clearance.detail}). 5G V2X Cooperative Gap Creation initiated.`,
+        })
       }
-
-      if (!platoons[dstLane]) platoons[dstLane] = []
-      platoons[dstLane] = [...platoons[dstLane], vkTransferring]
-
-      // â”€â”€ Phase 3 â†’ 4 transition will happen once wy â‰ˆ targetLane â”€â”€â”€â”€â”€â”€â”€â”€â”€
-      // We detect arrival in the main simulation loop below and flip to 'stabilizing'.
-      // (Managed in stepTransferFsm called from the tick loop)
-
     } else {
       // â”€â”€ Same-lane swap: exchange longitudinal positions (overtake) â”€â”€
       const swappedA: VehicleState = { ...vA, x: vB.x, speed: vB.speed, accel: vB.accel }

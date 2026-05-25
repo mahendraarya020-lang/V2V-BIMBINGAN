@@ -24,7 +24,7 @@ export function SettingsPage() {
     () => Number(localStorage.getItem('sim-default-loss')) || 0.5
   )
   const [defaultBandwidthMhz, setDefaultBandwidthMhz] = useState(
-    () => Number(localStorage.getItem('sim-default-bandwidth-mhz')) || 20
+    () => Number(localStorage.getItem('sim-default-bandwidth-mhz')) || 1000
   )
 
   const [toasts, setToasts] = useState<ToastItem[]>([])
@@ -189,7 +189,7 @@ export function SettingsPage() {
                 <span className="text-sm font-medium text-zinc-300">Default Channel Bandwidth (B)</span>
                 <div className="flex items-center border border-zinc-800 bg-zinc-900 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 transition-shadow">
                   <input
-                    type="number" min="5" max="100" step="5"
+                    type="number" min="5" max="1000" step="5"
                     className="flex-1 bg-transparent p-2.5 text-sm text-white outline-none"
                     value={defaultBandwidthMhz}
                     onChange={(e) => setDefaultBandwidthMhz(Number(e.target.value))}
