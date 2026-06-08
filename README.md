@@ -11,8 +11,8 @@ Aplikasi Platform Simulasi 2D Interaktif *Client-Server* terintegrasi Emulator J
   2. Muhammad Abduh
   3. Ahmad Zulfikar
 * **Pembimbing**:
-  1. Linea Meylani S.T., M.T.
-  2. Ir. Uko Kurniawan Usman, M.T.
+  1. Linda Meylani S.T., M.T.
+  2. Ir. Uke Kurniawan Usman, M.T.
 * **Afiliasi**: S1 Teknik Telekomunikasi, Fakultas Teknik Elektro, Telkom University
 
 ---
