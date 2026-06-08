@@ -1267,7 +1267,7 @@ export function SimulationCanvas({
   const cursorStyle = isDragging ? 'grabbing' : hoveredVehicleId ? 'pointer' : 'grab'
 
   return (
-    <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, width: '100%', lineHeight: 0 }}>
+    <div className="sim-canvas-wrapper" style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, width: '100%', lineHeight: 0 }}>
       <canvas
         className="sim-canvas"
         ref={canvasRef}
