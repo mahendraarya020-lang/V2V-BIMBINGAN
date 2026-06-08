@@ -1,0 +1,19 @@
+module.exports = {
+  apps: [
+    {
+      name: "v2v-platooning-simulation",
+      script: "./backend/dist/server.js",
+      cwd: __dirname,
+      watch: false,
+      env: {
+        NODE_ENV: "production",
+        PORT: 4000,
+        CLIENT_ORIGIN: "*",
+        SERVE_STATIC: "true",
+        FRONTEND_DIST_PATH: "./frontend/dist",
+        SIM_TICK_MS: 10,
+        SIM_BROADCAST_MS: 50
+      }
+    }
+  ]
+}
