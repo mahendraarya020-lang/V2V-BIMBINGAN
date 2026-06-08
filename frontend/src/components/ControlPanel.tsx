@@ -20,27 +20,12 @@ type Props = {
   onThrottleBrake: (throttle: number, brake: number) => void
   onTrigger: (kind: SimulationTrigger) => void
   onSwap: (idA: string, idB: string) => void
+  onSwitchLane: (vehicleId: string, targetLane: number) => void
 }
 
 type Tab = 'network' | 'scenarios' | 'maneuvers'
 
-const presets: { label: string; desc: string; params: Partial<SimulationParams> }[] = [
-  {
-    label: 'Nominal',
-    desc: 'Stable baseline',
-    params: { latencyMs: 10, packetLossPercent: 0.2, channelBandwidthHz: 1_000_000_000, timeHeadway: 1 },
-  },
-  {
-    label: 'Congested',
-    desc: 'High-density network',
-    params: { latencyMs: 16, packetLossPercent: 3, channelBandwidthHz: 400_000_000, timeHeadway: 1.3 },
-  },
-  {
-    label: 'Stress Test',
-    desc: 'ACC fallback mode',
-    params: { latencyMs: 20, packetLossPercent: 12, channelBandwidthHz: 100_000_000, timeHeadway: 1.6 },
-  },
-]
+
 
 function SliderRow({
   label,
@@ -68,17 +53,34 @@ function SliderRow({
 
 export function ControlPanel({
   params, vehicles, followerCount,
-  onUpdateParams, onFollowerCountChange, onThrottleBrake, onTrigger, onSwap,
+  onUpdateParams, onFollowerCountChange, onThrottleBrake, onTrigger, onSwap, onSwitchLane,
 }: Props) {
   const [tab, setTab] = useState<Tab>('network')
   const [firstId, setFirstId] = useState('')
   const [secondId, setSecondId] = useState('')
+  const [switchVeh, setSwitchVeh] = useState('')
+  const [switchLaneVal, setSwitchLaneVal] = useState<number | undefined>(undefined)
+
   const channelMhz = hzToMhz(params.channelBandwidthHz ?? 1_000_000_000)
   const vehicleIds = vehicles.map(v => v.id)
   // Build a map from vehicle id to its actual platoon lane for correct labeling
   const vehicleLaneMap = new Map(vehicles.map(v => [v.id, v.y]))
   const selA = firstId && vehicleIds.includes(firstId) ? firstId : (vehicleIds[0] ?? '')
   const selB = secondId && vehicleIds.includes(secondId) ? secondId : (vehicleIds[1] ?? '')
+
+  // Compute available lanes dynamically
+  const laneSet = new Set<number>()
+  vehicles.forEach(v => {
+    laneSet.add(v.y)
+    if (v.targetLane !== undefined) laneSet.add(v.targetLane)
+  })
+  const lanes = Array.from(laneSet).sort((a, b) => a - b)
+  if (lanes.length === 0) lanes.push(0)
+
+  const selSwitchVeh = switchVeh && vehicleIds.includes(switchVeh) ? switchVeh : (vehicleIds[0] ?? '')
+  const currentVehLane = vehicleLaneMap.get(selSwitchVeh) ?? 0
+  const otherLanes = lanes.filter(l => l !== currentVehLane)
+  const selSwitchLane = switchLaneVal !== undefined && lanes.includes(switchLaneVal) ? switchLaneVal : (otherLanes[0] ?? lanes[0] ?? 0)
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'network', label: '5G & CACC' },
@@ -179,18 +181,7 @@ export function ControlPanel({
 
         {tab === 'scenarios' && (
           <div className="ck-form-group">
-            <div className="ck-group-title">Network Presets</div>
-            <div className="ck-preset-grid">
-              {presets.map((p) => (
-                <button key={p.label} className="ck-preset-btn" type="button"
-                  onClick={() => onUpdateParams(p.params)}>
-                  <span className="ck-preset-label">{p.label}</span>
-                  <span className="ck-preset-desc">{p.desc}</span>
-                </button>
-              ))}
-            </div>
 
-            <div className="ck-divider" />
             <div className="ck-group-title">Live Disruptions</div>
             <div className="ck-btn-stack">
               <button className="ck-btn ck-btn-ghost" type="button" onClick={() => onTrigger('latencySpike')}>
@@ -227,7 +218,7 @@ export function ControlPanel({
             </div>
 
             <div className="ck-divider" />
-            <div className="ck-group-title">Vehicle Transfer</div>
+            <div className="ck-group-title">Inter-Platoon / Overtake Swap</div>
             <div className="ck-form-group">
               <div className="ck-select-row">
                 <span className="ck-select-label">Vehicle A</span>
@@ -255,7 +246,43 @@ export function ControlPanel({
                 onClick={() => onSwap(selA, selB)}
                 type="button"
               >
-                Initiate Transfer
+                Initiate Swap / Overtake
+              </button>
+              <div className="ck-panel-sub" style={{ fontSize: '0.68rem', marginTop: '0.3rem', lineHeight: '1.3' }}>
+                * Different lanes: initiates cooperative transfer. Same lane: initiates physical overtake swap.
+              </div>
+            </div>
+
+            <div className="ck-divider" />
+            <div className="ck-group-title">Single Vehicle Switch Lane</div>
+            <div className="ck-form-group">
+              <div className="ck-select-row">
+                <span className="ck-select-label">Vehicle</span>
+                <select className="ck-select" value={selSwitchVeh} onChange={(e) => setSwitchVeh(e.target.value)}>
+                  {vehicleIds.map((id) => {
+                    const lane = vehicleLaneMap.get(id) ?? 0
+                    const platoon = String.fromCharCode(65 + lane)
+                    return <option key={`switch-${id}`} value={id}>[{platoon}] {id.replace('b_', '').toUpperCase()}</option>
+                  })}
+                </select>
+              </div>
+              <div className="ck-select-row">
+                <span className="ck-select-label">Target Lane</span>
+                <select className="ck-select" value={selSwitchLane} onChange={(e) => setSwitchLaneVal(Number(e.target.value))}>
+                  {lanes.map((laneIdx) => (
+                    <option key={`lane-${laneIdx}`} value={laneIdx}>
+                      Lane {String.fromCharCode(65 + laneIdx)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                className="ck-btn ck-btn-primary"
+                disabled={!selSwitchVeh || vehicleLaneMap.get(selSwitchVeh) === selSwitchLane}
+                onClick={() => onSwitchLane(selSwitchVeh, selSwitchLane)}
+                type="button"
+              >
+                Initiate Lane Change
               </button>
             </div>
           </div>

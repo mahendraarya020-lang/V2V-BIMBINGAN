@@ -10,6 +10,8 @@ import { useSimulationSocket } from '../hooks/useSimulationSocket'
 import { useDataLogger } from '../hooks/useDataLogger'
 import { readDefaultParamsFromStorage } from '../utils/units'
 import { AnalysisPage } from './AnalysisPage'
+import { SunIcon, MoonIcon, TerminalIcon } from '../components/Icons'
+import logoImg from '../assets/logo.png'
 
 export function SimulationPage() {
   const navigate = useNavigate()
@@ -24,7 +26,7 @@ export function SimulationPage() {
   const [pendingSwap, setPendingSwap] = useState<{ idA: string; idB: string; triggeredAt: number } | null>(null)
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const [consoleLogs, setConsoleLogs] = useState<Array<{ id: number; timestamp: string; title: string; message: string; kind: 'info' | 'warn' | 'error' }>>([])
-  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const elapsedSeconds = state?.elapsedSeconds ?? 0
   const [isFullscreen, setIsFullscreen] = useState(false)
 
   useEffect(() => {
@@ -64,7 +66,6 @@ export function SimulationPage() {
   const defaultPlatoonCount = state ? Array.from(new Set(state.vehicles.map((v) => v.y))).length : 2
 
   const startSimulation = useCallback((platoonCount?: number, followerCount?: number) => {
-    setElapsedSeconds(0)
     actions.start({ platoonCount: platoonCount ?? defaultPlatoonCount, followerCount })
   }, [actions, defaultPlatoonCount])
 
@@ -79,6 +80,15 @@ export function SimulationPage() {
     setPendingSwap({ idA, idB, triggeredAt: Date.now() })
     swapTimerRef.current = setTimeout(() => setPendingSwap(null), 1600)
     pushToast({ title: 'Transfer initiated', message: `${idA.toUpperCase()} to ${idB.toUpperCase()} platoon.`, kind: 'info' })
+  }
+
+  function handleSwitchLane(vehicleId: string, targetLane: number) {
+    actions.switchLane(vehicleId, targetLane)
+    pushToast({
+      title: 'Lane Change Initiated',
+      message: `Moving ${vehicleId.toUpperCase()} to Lane ${String.fromCharCode(65 + targetLane)}.`,
+      kind: 'info',
+    })
   }
 
   useEffect(() => {
@@ -114,7 +124,7 @@ export function SimulationPage() {
     if (!state) return
     const wasRunning = lastRunningRef.current
     if (state.running && !wasRunning) {
-      window.setTimeout(() => { setElapsedSeconds(0); pushToast({ title: 'Simulation started', message: 'Sesi simulasi aktif.', kind: 'info' }) }, 0)
+      window.setTimeout(() => { pushToast({ title: 'Simulation started', message: 'Sesi simulasi aktif.', kind: 'info' }) }, 0)
     }
     if (!state.running && wasRunning) {
       window.setTimeout(() => { pushToast({ title: 'Simulation stopped', message: 'Sesi simulasi dihentikan.', kind: 'info' }) }, 0)
@@ -133,11 +143,7 @@ export function SimulationPage() {
     lastControlModeRef.current = mode
   }, [state])
 
-  useEffect(() => {
-    if (!state?.running) return
-    const timer = window.setInterval(() => setElapsedSeconds((s) => s + 1), 1000)
-    return () => window.clearInterval(timer)
-  }, [state?.running])
+
 
   useEffect(() => {
     if (!state) return
@@ -156,15 +162,16 @@ export function SimulationPage() {
 
   const runningElapsed = useMemo(() => {
     if (!state?.running) return '00:00'
-    const mm = String(Math.floor(elapsedSeconds / 60)).padStart(2, '0')
-    const ss = String(elapsedSeconds % 60).padStart(2, '0')
+    const totalSecs = Math.floor(elapsedSeconds)
+    const mm = String(Math.floor(totalSecs / 60)).padStart(2, '0')
+    const ss = String(totalSecs % 60).padStart(2, '0')
     return `${mm}:${ss}`
   }, [elapsedSeconds, state?.running])
 
   function dismissToast(id: number) { setToasts((prev) => prev.filter((t) => t.id !== id)) }
 
   useEffect(() => {
-    const navState = (location.state as { historyId?: string; platoonCount?: number; followerCount?: number; autoStart?: boolean } | null)
+    const navState = (location.state as { historyId?: string; platoonCount?: number; followerCount?: number; configure?: boolean } | null)
     if (!navState?.historyId) return
     actions.loadHistory(navState.historyId)
     window.setTimeout(() => setShowAnalysis(true), 0)
@@ -172,13 +179,15 @@ export function SimulationPage() {
   }, [actions, location.pathname, location.state, navigate])
 
   useEffect(() => {
-    const navState = (location.state as { historyId?: string; platoonCount?: number; followerCount?: number; autoStart?: boolean } | null)
-    if (!state || !navState?.autoStart) return
+    const navState = (location.state as { historyId?: string; platoonCount?: number; followerCount?: number; configure?: boolean } | null)
+    if (!state || !navState?.configure) return
     const count = typeof navState.platoonCount === 'number' ? navState.platoonCount : defaultPlatoonCount
     const followers = typeof navState.followerCount === 'number' ? navState.followerCount : undefined
-    window.setTimeout(() => startSimulation(count, followers), 0)
+    window.setTimeout(() => {
+      actions.configure({ platoonCount: count, followerCount: followers })
+    }, 0)
     navigate(location.pathname, { replace: true, state: null })
-  }, [defaultPlatoonCount, location.pathname, location.state, navigate, startSimulation, state])
+  }, [defaultPlatoonCount, location.pathname, location.state, navigate, actions, state])
 
   useEffect(() => {
     function onFullScreenChange() { setIsFullscreen(document.fullscreenElement === canvasWrapRef.current) }
@@ -198,7 +207,7 @@ export function SimulationPage() {
   }, [])
 
   if (showAnalysis && analysis) {
-    return <AnalysisPage analysis={analysis} meta={savedMeta ?? undefined} onClose={() => setShowAnalysis(false)} />
+    return <AnalysisPage analysis={analysis} meta={savedMeta ?? undefined} theme={theme} onClose={() => setShowAnalysis(false)} />
   }
 
   if (!state) {
@@ -225,7 +234,7 @@ export function SimulationPage() {
       {/* ── Compact top navbar ── */}
       <nav className="ck-navbar">
         <div className="ck-navbar-brand">
-          <div className="ck-brand-mark">V2V</div>
+          <img src={logoImg} alt="V2V Logo" style={{ height: '32px', width: 'auto', borderRadius: '4px' }} />
           <div>
             <div className="ck-brand-title">Platooning Studio</div>
             <div className="ck-brand-sub">5G CACC Simulation</div>
@@ -257,10 +266,10 @@ export function SimulationPage() {
             className="ck-btn ck-btn-ghost"
             onClick={toggleTheme}
             title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-            style={{ fontSize: '1.05rem', padding: '0.4rem 0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ padding: '0.4rem 0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             type="button"
           >
-            {theme === 'dark' ? '☀️' : '🌙'}
+            {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
           </button>
 
           <button
@@ -278,6 +287,26 @@ export function SimulationPage() {
               </>
             )}
           </button>
+
+          {/* ── Simulation Speed Control ── */}
+          <div className="ck-speed-group" title="Simulation Speed Multiplier">
+            <span className="ck-speed-label">Speed</span>
+            {([1, 2, 4] as const).map((s) => {
+              const active = (state.simSpeed ?? 1) === s
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  className={`ck-btn ck-btn-speed ${active ? 'active' : ''}`}
+                  onClick={() => actions.setSpeed(s)}
+                  disabled={!state.running}
+                  title={s === 1 ? 'Normal speed' : s === 2 ? '2× faster' : '4× faster'}
+                >
+                  {s}×
+                </button>
+              )
+            })}
+          </div>
 
           <button className="ck-btn ck-btn-primary" onClick={() => startSimulation()} disabled={state.running} type="button">
             Start
@@ -303,6 +332,7 @@ export function SimulationPage() {
           onThrottleBrake={actions.setControl}
           onTrigger={actions.trigger}
           onSwap={handleSwap}
+          onSwitchLane={handleSwitchLane}
         />
 
         {/* Center: Canvas */}
@@ -333,103 +363,62 @@ export function SimulationPage() {
             running={state.running}
             avgSpeedMs={telemetry.averagePlatoonSpeedMs}
             theme={theme}
+            simSpeed={state.simSpeed}
           />
 
-          {selectedVehicleId && (
-            <VehicleDetail
-              vehicle={state.vehicles.find((v) => v.id === selectedVehicleId) ?? null}
-              vehicles={state.vehicles}
-              onSwap={handleSwap}
-            />
-          )}
+          {/* Bottom Overlays */}
+          <div className="ck-canvas-bottom-overlay">
+            {selectedVehicleId && (
+              <VehicleDetail
+                vehicle={state.vehicles.find((v) => v.id === selectedVehicleId) ?? null}
+                vehicles={state.vehicles}
+                onSwap={handleSwap}
+                onClose={() => setSelectedVehicleId(null)}
+              />
+            )}
 
-          {/* V2X Live Event Console (Recommendation 4) */}
-          <div className="ck-console card" style={{
-            marginTop: '0.8rem',
-            backgroundColor: '#09090b',
-            border: '1px solid rgba(129, 140, 248, 0.16)',
-            borderRadius: '8px',
-            fontFamily: 'Consolas, Monaco, monospace',
-            fontSize: '0.74rem',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden'
-          }}>
-            <div style={{
-              backgroundColor: 'rgba(129, 140, 248, 0.05)',
-              padding: '6px 12px',
-              borderBottom: '1px solid rgba(129, 140, 248, 0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              userSelect: 'none'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#818cf8', fontWeight: 'bold' }}>
-                <span className="blink-dot" style={{
-                  width: '6px',
-                  height: '6px',
-                  backgroundColor: '#34d399',
-                  borderRadius: '50%',
-                  display: 'inline-block'
-                }} />
-                <span>📟 V2X LIVE EVENT CONSOLE</span>
-              </div>
-              <button
-                onClick={() => setConsoleLogs([])}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#71717a',
-                  cursor: 'pointer',
-                  fontSize: '0.68rem',
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  backgroundColor: 'rgba(255,255,255,0.03)'
-                }}
-                type="button"
-              >
-                Clear Log
-              </button>
-            </div>
-            <div style={{
-              padding: '8px 12px',
-              maxHeight: '120px',
-              minHeight: '80px',
-              overflowY: 'auto',
-              color: '#d4d4d8',
-              lineHeight: '1.4',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '4px',
-              textAlign: 'left'
-            }}
-            ref={(el) => {
-              if (el) el.scrollTop = el.scrollHeight
-            }}>
-              {consoleLogs.length === 0 ? (
-                <div style={{ color: '#52525b', fontStyle: 'italic' }}>
-                  [System] Listening to 5G NR-V2X channel... Console initialized.
+            {/* V2X Live Event Console (Recommendation 4) */}
+            <div className="ck-console card">
+              <div className="ck-console-header">
+                <div className="ck-console-brand" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span className="blink-dot" />
+                  <TerminalIcon style={{ color: 'var(--ok)' }} />
+                  <span>V2X LIVE EVENT CONSOLE</span>
                 </div>
-              ) : (
-                consoleLogs.map((log) => {
-                  const logColor = log.kind === 'error' ? '#f87171' : log.kind === 'warn' ? '#fbbf24' : '#34d399'
-                  return (
-                    <div key={`log-${log.id}`} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-                      <span style={{ color: '#71717a', flexShrink: 0 }}>[{log.timestamp}]</span>
-                      <span style={{ color: logColor, fontWeight: 'bold', flexShrink: 0 }}>[{log.title.toUpperCase()}]</span>
-                      <span style={{ color: '#e4e4e7' }}>{log.message}</span>
-                    </div>
-                  )
-                })
-              )}
-              <div className="terminal-cursor" style={{ color: '#34d399', fontWeight: 'bold', display: 'flex', alignItems: 'center' }}>
-                <span>&gt;&nbsp;</span>
-                <span style={{
-                  width: '6px',
-                  height: '11px',
-                  backgroundColor: '#34d399',
-                  display: 'inline-block'
-                }} />
+                <button
+                  onClick={() => setConsoleLogs([])}
+                  className="ck-console-clear"
+                  type="button"
+                >
+                  Clear Log
+                </button>
+              </div>
+              <div 
+                className="ck-console-body"
+                ref={(el) => {
+                  if (el) el.scrollTop = el.scrollHeight
+                }}
+              >
+                {consoleLogs.length === 0 ? (
+                  <div className="ck-console-empty">
+                    [System] Listening to 5G NR-V2X channel... Console initialized.
+                  </div>
+                ) : (
+                  consoleLogs.map((log) => {
+                    const logColor = log.kind === 'error' ? 'var(--bad)' : log.kind === 'warn' ? 'var(--warn)' : 'var(--ok)'
+                    return (
+                      <div key={`log-${log.id}`} className="ck-console-line">
+                        <span className="ck-console-time">[{log.timestamp}]</span>
+                        <span className="ck-console-tag" style={{ color: logColor }}>[{log.title.toUpperCase()}]</span>
+                        <span className="ck-console-text">{log.message}</span>
+                      </div>
+                    )
+                  })
+                )}
+                <div className="terminal-cursor">
+                  <span>&gt;&nbsp;</span>
+                  <span className="cursor-block" />
+                </div>
               </div>
             </div>
           </div>

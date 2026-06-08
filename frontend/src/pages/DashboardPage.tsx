@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSimulationSocket } from '../hooks/useSimulationSocket'
 import { appConfig } from '../config'
+import { SunIcon, MoonIcon } from '../components/Icons'
+import logoImg from '../assets/logo.png'
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString('id-ID', {
@@ -91,7 +93,7 @@ export function DashboardPage() {
   }
 
   function startConfiguredSimulation() {
-    navigate('/simulation', { state: { platoonCount, autoStart: true } })
+    navigate('/simulation', { state: { platoonCount, configure: true } })
   }
 
   return (
@@ -99,7 +101,7 @@ export function DashboardPage() {
       {/* ── Sidebar ────────────────────────────────────────────────────── */}
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <span className="brand-mark">V2V</span>
+          <img src={logoImg} alt="V2V Logo" style={{ height: '32px', width: 'auto', borderRadius: '4px' }} />
           <div>
             <h2 className="brand">5G Platoon</h2>
             <small>Simulation Studio</small>
@@ -114,8 +116,18 @@ export function DashboardPage() {
           <button className="nav-item" onClick={() => navigate('/settings')} type="button">
             Settings
           </button>
-          <button className="nav-item" onClick={toggleTheme} type="button">
-            {theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode'}
+          <button className="nav-item" onClick={toggleTheme} type="button" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {theme === 'dark' ? (
+              <>
+                <SunIcon style={{ width: '15px', height: '15px' }} />
+                <span>Light Mode</span>
+              </>
+            ) : (
+              <>
+                <MoonIcon style={{ width: '15px', height: '15px' }} />
+                <span>Dark Mode</span>
+              </>
+            )}
           </button>
         </nav>
 

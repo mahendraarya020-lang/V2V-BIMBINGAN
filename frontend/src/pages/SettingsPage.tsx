@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { appConfig } from '../config'
 import { Toast, type ToastItem } from '../components/Toast'
+import { SunIcon, MoonIcon } from '../components/Icons'
+import logoImg from '../assets/logo.png'
 
 export function SettingsPage() {
   const navigate = useNavigate()
@@ -28,6 +30,9 @@ export function SettingsPage() {
   )
 
   const [toasts, setToasts] = useState<ToastItem[]>([])
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('theme') as 'dark' | 'light') ?? 'dark'
+  })
 
   // --- Handlers ---
   function addToast(title: string, message: string, kind: 'info' | 'warn' | 'error') {
@@ -35,10 +40,11 @@ export function SettingsPage() {
   }
 
   useEffect(() => {
-    // Force Dark Mode globally
-    document.documentElement.classList.add('dark')
-    localStorage.setItem('sim-theme', 'dark')
-  }, [])
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))
 
   // Persist to localStorage
   useEffect(() => localStorage.setItem('sim-default-topology', defaultTopology), [defaultTopology])
@@ -72,7 +78,7 @@ export function SettingsPage() {
       {/* ── Sidebar ── */}
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <span className="brand-mark">V2V</span>
+          <img src={logoImg} alt="V2V Logo" style={{ height: '32px', width: 'auto', borderRadius: '4px' }} />
           <div>
             <h2 className="brand">5G Platoon</h2>
             <small>Simulation Studio</small>
@@ -88,7 +94,25 @@ export function SettingsPage() {
           <button className="nav-item active" type="button">
             Settings
           </button>
+          <button className="nav-item" onClick={toggleTheme} type="button" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {theme === 'dark' ? (
+              <>
+                <SunIcon style={{ width: '15px', height: '15px' }} />
+                <span>Light Mode</span>
+              </>
+            ) : (
+              <>
+                <MoonIcon style={{ width: '15px', height: '15px' }} />
+                <span>Dark Mode</span>
+              </>
+            )}
+          </button>
         </nav>
+        <footer className="sidebar-footer">
+          <button className="nav-item danger" onClick={() => { localStorage.removeItem('sim-user-nim'); navigate('/') }}>
+            Logout
+          </button>
+        </footer>
       </aside>
 
       {/* ── Main ── */}
@@ -97,23 +121,25 @@ export function SettingsPage() {
           <div>
             <span className="eyebrow">Preferences</span>
             <h1>Settings</h1>
-            <p className="text-zinc-400">Configure global simulation parameters for your workspace.</p>
+            <p>Configure global simulation parameters for your workspace.</p>
           </div>
         </header>
 
-        <div className="flex flex-col gap-6 mt-6 w-full max-w-3xl">
+        <div className="settings-content">
           {/* Simulation Defaults Card */}
-          <section className="card p-6 border border-zinc-800 bg-zinc-900/40">
-            <h2 className="mb-1 text-lg font-bold text-zinc-100">Simulation Defaults</h2>
-            <p className="mb-6 text-sm text-zinc-400">
-              Set the foundational kinematic and communication parameters loaded on initialization.
-            </p>
+          <section className="card settings-card">
+            <div>
+              <h2 className="settings-section-title">Simulation Defaults</h2>
+              <p className="settings-section-desc">
+                Set the foundational kinematic and communication parameters loaded on initialization.
+              </p>
+            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <label className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-zinc-300">Default V2V Topology</span>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
+              <label className="settings-label">
+                <span>Default V2V Topology</span>
                 <select 
-                  className="p-2.5 rounded-lg border border-zinc-800 bg-zinc-900 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none transition-shadow"
+                  className="settings-input"
                   value={defaultTopology}
                   onChange={(e) => setDefaultTopology(e.target.value)}
                 >
@@ -123,91 +149,93 @@ export function SettingsPage() {
                 </select>
               </label>
 
-              <label className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-zinc-300">Default Reference Speed (v₀)</span>
-                <div className="flex items-center border border-zinc-800 bg-zinc-900 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 transition-shadow">
+              <label className="settings-label">
+                <span>Default Reference Speed (v₀)</span>
+                <div className="settings-input-group">
                   <input 
                     type="number" min="5" max="42" step="1"
-                    className="flex-1 bg-transparent p-2.5 text-sm text-white outline-none"
+                    className="settings-input-inner"
                     value={defaultSpeed}
                     onChange={(e) => setDefaultSpeed(Number(e.target.value))}
                   />
-                  <span className="pr-3 text-xs font-semibold text-zinc-500">m/s</span>
+                  <span className="settings-input-unit">m/s</span>
                 </div>
               </label>
 
-              <label className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-zinc-300">Default Time Headway</span>
-                <div className="flex items-center border border-zinc-800 bg-zinc-900 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 transition-shadow">
+              <label className="settings-label">
+                <span>Default Time Headway</span>
+                <div className="settings-input-group">
                   <input 
                     type="number" min="0.1" max="5.0" step="0.1"
-                    className="flex-1 bg-transparent p-2.5 text-sm text-white outline-none"
+                    className="settings-input-inner"
                     value={defaultTimeHeadway}
                     onChange={(e) => setDefaultTimeHeadway(Number(e.target.value))}
                   />
-                  <span className="pr-3 text-xs font-semibold text-zinc-500">s</span>
+                  <span className="settings-input-unit">s</span>
                 </div>
               </label>
             </div>
           </section>
 
           {/* Network Emulation Defaults Card */}
-          <section className="card p-6 border border-zinc-800 bg-zinc-900/40">
-            <h2 className="mb-1 text-lg font-bold text-zinc-100">Network Defaults</h2>
-            <p className="mb-6 text-sm text-zinc-400">
-              Configure baseline 5G environmental factors for thesis experiments.
-            </p>
+          <section className="card settings-card">
+            <div>
+              <h2 className="settings-section-title">Network Defaults</h2>
+              <p className="settings-section-desc">
+                Configure baseline 5G environmental factors for thesis experiments.
+              </p>
+            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <label className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-zinc-300">Default Latency</span>
-                <div className="flex items-center border border-zinc-800 bg-zinc-900 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 transition-shadow">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
+              <label className="settings-label">
+                <span>Default Latency</span>
+                <div className="settings-input-group">
                   <input 
                     type="number" min="0" max="1000" step="1"
-                    className="flex-1 bg-transparent p-2.5 text-sm text-white outline-none"
+                    className="settings-input-inner"
                     value={defaultLatency}
                     onChange={(e) => setDefaultLatency(Number(e.target.value))}
                   />
-                  <span className="pr-3 text-xs font-semibold text-zinc-500">ms</span>
+                  <span className="settings-input-unit">ms</span>
                 </div>
               </label>
 
-              <label className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-zinc-300">Default Packet Loss (PLR)</span>
-                <div className="flex items-center border border-zinc-800 bg-zinc-900 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 transition-shadow">
+              <label className="settings-label">
+                <span>Default Packet Loss (PLR)</span>
+                <div className="settings-input-group">
                   <input 
                     type="number" min="0" max="100" step="0.1"
-                    className="flex-1 bg-transparent p-2.5 text-sm text-white outline-none"
+                    className="settings-input-inner"
                     value={defaultPacketLoss}
                     onChange={(e) => setDefaultPacketLoss(Number(e.target.value))}
                   />
-                  <span className="pr-3 text-xs font-semibold text-zinc-500">%</span>
+                  <span className="settings-input-unit">%</span>
                 </div>
               </label>
 
-              <label className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-zinc-300">Default Channel Bandwidth (B)</span>
-                <div className="flex items-center border border-zinc-800 bg-zinc-900 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 transition-shadow">
+              <label className="settings-label">
+                <span>Default Channel Bandwidth (B)</span>
+                <div className="settings-input-group">
                   <input
                     type="number" min="5" max="1000" step="5"
-                    className="flex-1 bg-transparent p-2.5 text-sm text-white outline-none"
+                    className="settings-input-inner"
                     value={defaultBandwidthMhz}
                     onChange={(e) => setDefaultBandwidthMhz(Number(e.target.value))}
                   />
-                  <span className="pr-3 text-xs font-semibold text-zinc-500">MHz</span>
+                  <span className="settings-input-unit">MHz</span>
                 </div>
               </label>
             </div>
           </section>
 
           {/* Account Card (Minimal) */}
-          <section className="card p-6 border border-zinc-800 bg-zinc-900/40 flex items-center justify-between">
+          <section className="card settings-card settings-row">
             <div>
-              <h2 className="text-base font-bold text-zinc-100">Account</h2>
-              <p className="text-sm text-zinc-400">Logged in as <strong className="text-white">{user}</strong>.</p>
+              <h2 className="settings-section-title" style={{ fontSize: '1rem', margin: 0 }}>Account</h2>
+              <p className="settings-section-desc" style={{ margin: 0 }}>Logged in as <strong>{user}</strong>.</p>
             </div>
             <button
-              className="px-4 py-2 text-sm font-medium bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 rounded-lg transition-colors"
+              className="btn"
               onClick={() => { localStorage.removeItem('sim-user-nim'); navigate('/') }}
               type="button"
             >
@@ -216,14 +244,16 @@ export function SettingsPage() {
           </section>
 
           {/* Danger Zone */}
-          <section className="card p-6 border border-red-900/30 bg-red-950/10">
-            <h2 className="mb-1 text-lg font-bold text-red-500">Danger Zone</h2>
-            <p className="mb-6 text-sm text-zinc-400">
-              Irreversible action. This will clear all saved CSV telemetry from the browser/database.
-            </p>
-            <div className="flex items-start">
+          <section className="card settings-card" style={{ borderColor: 'rgba(239, 68, 68, 0.2)' }}>
+            <div>
+              <h2 className="settings-section-title" style={{ color: 'var(--bad)' }}>Danger Zone</h2>
+              <p className="settings-section-desc">
+                Irreversible action. This will clear all saved CSV telemetry from the browser/database.
+              </p>
+            </div>
+            <div style={{ display: 'flex' }}>
               <button
-                className="px-5 py-2.5 text-sm font-semibold rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors"
+                className="btn danger"
                 onClick={handleDeleteAll}
                 type="button"
               >

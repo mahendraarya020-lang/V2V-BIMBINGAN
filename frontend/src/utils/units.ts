@@ -63,6 +63,7 @@ export function legacyMbpsToHz(mbps: number): number {
 export function normalizeParams(params: SimulationParams & { bandwidthMbps?: number }): SimulationParams {
   const channelBandwidthHz = params.channelBandwidthHz
     ?? (params.bandwidthMbps != null ? legacyMbpsToHz(params.bandwidthMbps) : 1_000_000_000)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { bandwidthMbps: _legacy, ...rest } = params
   return { ...rest, channelBandwidthHz }
 }

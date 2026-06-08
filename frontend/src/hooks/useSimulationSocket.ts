@@ -67,58 +67,7 @@ export function useSimulationSocket() {
     socket.on('connect', () => setIsConnected(true))
     socket.on('disconnect', () => setIsConnected(false))
     socket.on('sim:state', (payload: SimulationState) => {
-      const normalized = normalizeState(payload)
-      // #region agent log
-      fetch('http://127.0.0.1:7701/ingest/b7762f81-002a-4b26-9a43-bc49f3186196', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '2b9c00' },
-        body: JSON.stringify({
-          sessionId: '2b9c00',
-          runId: 'pre-fix',
-          hypothesisId: 'H1',
-          location: 'useSimulationSocket.ts:sim:state',
-          message: 'Received sim state payload shape',
-          data: {
-            hasTelemetry: Boolean(payload?.telemetry),
-            vehiclesCount: payload?.vehicles?.length ?? -1,
-            hasEndToEndDelayMs: typeof payload?.telemetry?.endToEndDelayMs === 'number',
-            hasMaxSpacingError: typeof payload?.telemetry?.maxSpacingError === 'number',
-            hasAveragePlatoonSpeedMs: typeof payload?.telemetry?.averagePlatoonSpeedMs === 'number',
-            firstVehicle: payload?.vehicles?.[0]
-              ? {
-                id: payload.vehicles[0].id,
-                x: payload.vehicles[0].x,
-                y: payload.vehicles[0].y,
-                wy: payload.vehicles[0].wy,
-                heading: payload.vehicles[0].heading,
-                crashed: payload.vehicles[0].crashed,
-              }
-              : null,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {})
-      // #endregion
-      // #region agent log
-      fetch('http://127.0.0.1:7701/ingest/b7762f81-002a-4b26-9a43-bc49f3186196', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '2b9c00' },
-        body: JSON.stringify({
-          sessionId: '2b9c00',
-          runId: 'post-fix',
-          hypothesisId: 'H4',
-          location: 'useSimulationSocket.ts:normalizeState',
-          message: 'Normalized telemetry payload before storing state',
-          data: {
-            endToEndDelayMs: normalized.telemetry.endToEndDelayMs,
-            maxSpacingError: normalized.telemetry.maxSpacingError,
-            averagePlatoonSpeedMs: normalized.telemetry.averagePlatoonSpeedMs,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {})
-      // #endregion
-      setState(normalized)
+      setState(normalizeState(payload))
     })
     socket.on('sim:history', (payload: SimulationHistory[]) => setHistory(payload))
     socket.on('sim:analysis', (payload: AnalysisData) => setAnalysis(payload))
@@ -136,6 +85,7 @@ export function useSimulationSocket() {
 
   const actions = useMemo(() => ({
     start: (options?: { platoonCount?: number; followerCount?: number }) => socket.emit('sim:start', options ?? {}),
+    configure: (options?: { platoonCount?: number; followerCount?: number }) => socket.emit('sim:configure', options ?? {}),
     stop: () => socket.emit('sim:stop'),
     reset: () => socket.emit('sim:reset'),
     updateParams: (payload: Partial<SimulationParams>) => socket.emit('sim:updateParams', payload),
@@ -143,6 +93,8 @@ export function useSimulationSocket() {
     setControl: (throttle: number, brake: number) => socket.emit('sim:control', { throttle, brake }),
     trigger: (kind: SimulationTrigger) => socket.emit('sim:trigger', kind),
     swapVehicles: (idA: string, idB: string) => socket.emit('sim:swapVehicles', { idA, idB }),
+    switchLane: (vehicleId: string, targetLane: number) => socket.emit('sim:switchLane', { vehicleId, targetLane }),
+    setSpeed: (speed: 1 | 2 | 4) => socket.emit('sim:setSpeed', { speed }),
     loadHistory: (id: string) => socket.emit('sim:loadHistory', id),
   }), [socket])
 

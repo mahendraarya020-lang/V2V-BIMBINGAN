@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import logoImg from '../assets/logo.png'
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -19,7 +20,7 @@ export function LoginPage() {
       {/* ── Navbar ─────────────────────────────────────────────────────── */}
       <header className="landing-nav">
         <div className="landing-brand">
-          <span className="brand-mark">V2V</span>
+          <img src={logoImg} alt="V2V Logo" style={{ height: '32px', width: 'auto', borderRadius: '4px' }} />
           <span className="landing-brand-title">5G Platoon Lab</span>
         </div>
         <nav className="landing-nav-links">

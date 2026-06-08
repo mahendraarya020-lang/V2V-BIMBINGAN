@@ -18,6 +18,7 @@ import type { AnalysisData, SimulationHistory } from '../types/sim'
 type Props = {
   analysis: AnalysisData
   meta?: SimulationHistory
+  theme?: 'dark' | 'light'
   onClose: () => void
 }
 
@@ -41,15 +42,6 @@ const COLORS = {
   spacing: '#ea580c',
 }
 
-const GRID_COLOR = 'rgba(148,163,184,0.28)'
-const AXIS_STYLE = { fill: '#64748b', fontSize: 11 }
-const TOOLTIP_STYLE = {
-  backgroundColor: '#ffffff',
-  border: '1px solid #cbd5e1',
-  borderRadius: 8,
-  color: '#0f172a',
-  fontSize: 12,
-}
 
 function formatTime(t: number) {
   return `${t.toFixed(1)}s`
@@ -79,7 +71,8 @@ type ZoomableChartProps = {
   title: string
   subtitle: string
   data: AnalysisData['series']
-  renderLines: (zoom: ZoomState, handlers: ZoomHandlers) => React.ReactNode
+  isLight: boolean
+  renderLines: (zoom: ZoomState, handlers: ZoomHandlers, axisStyle: { fill: string; fontSize: number }, tooltipStyle: React.CSSProperties) => React.ReactNode
 }
 
 type ZoomHandlers = {
@@ -90,7 +83,7 @@ type ZoomHandlers = {
   reset: () => void
 }
 
-function ZoomableChartCard({ title, subtitle, data, renderLines }: ZoomableChartProps) {
+function ZoomableChartCard({ title, subtitle, data, isLight, renderLines }: ZoomableChartProps) {
   const [zoom, setZoom] = useState<ZoomState>(makeZoom())
 
   const handlers: ZoomHandlers = {
@@ -131,6 +124,22 @@ function ZoomableChartCard({ title, subtitle, data, renderLines }: ZoomableChart
     ? data.filter((s) => s.t >= (zoom.left as number) && s.t <= (zoom.right as number))
     : data
 
+  const gridColor = isLight ? 'rgba(15, 23, 42, 0.08)' : 'rgba(148, 163, 184, 0.28)'
+  const axisStyle = { fill: isLight ? '#475569' : '#94a3b8', fontSize: 11 }
+  const tooltipStyle = isLight ? {
+    backgroundColor: '#ffffff',
+    border: '1px solid rgba(15, 23, 42, 0.1)',
+    borderRadius: 8,
+    color: '#0f172a',
+    fontSize: 12,
+  } : {
+    backgroundColor: '#18181b',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: 8,
+    color: '#f4f4f5',
+    fontSize: 12,
+  }
+
   return (
     <div className="analysis-chart-card">
       <div className="chart-title">
@@ -163,16 +172,16 @@ function ZoomableChartCard({ title, subtitle, data, renderLines }: ZoomableChart
             onMouseMove={(e) => handlers.onMouseMove(e as { activeLabel?: number })}
             onMouseUp={handlers.onMouseUp}
           >
-            <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" />
+            <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
             <XAxis
               dataKey="t"
               tickFormatter={formatTime}
-              tick={AXIS_STYLE}
+              tick={axisStyle}
               domain={domainX}
               allowDataOverflow
               type="number"
             />
-            {renderLines(zoom, handlers)}
+            {renderLines(zoom, handlers, axisStyle, tooltipStyle)}
             {/* Selection brush overlay */}
             {zoom.selecting && zoom.refLeft !== null && zoom.refRight !== null && (
               <ReferenceArea
@@ -577,9 +586,10 @@ function exportExcel(analysis: AnalysisData, meta?: SimulationHistory): void {
   URL.revokeObjectURL(url);
 }
 
-export function AnalysisPage({ analysis, meta, onClose }: Props) {
+export function AnalysisPage({ analysis, meta, theme = 'dark', onClose }: Props) {
   const navigate = useNavigate()
   const { series } = analysis
+  const isLight = theme === 'light'
 
   if (!series || series.length < 2) {
     return (
@@ -616,7 +626,7 @@ export function AnalysisPage({ analysis, meta, onClose }: Props) {
           >
             📊 Export Excel Dashboard
           </button>
-
+          
           <button
             className="btn ghost no-print"
             onClick={() => window.print()}
@@ -675,10 +685,11 @@ export function AnalysisPage({ analysis, meta, onClose }: Props) {
           title="End-to-End Delay"
           subtitle="Network delay over time"
           data={series}
-          renderLines={() => (
+          isLight={isLight}
+          renderLines={(_zoom, _handlers, axisStyle, tooltipStyle) => (
             <>
-              <YAxis tick={AXIS_STYLE} label={{ value: 'Delay (ms)', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 11 }} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => [`${value} ms`, 'Delay']} />
+              <YAxis tick={axisStyle} label={{ value: 'Delay (ms)', angle: -90, position: 'insideLeft', fill: isLight ? '#475569' : '#94a3b8', fontSize: 11 }} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${value} ms`, 'Delay']} />
               <ReferenceLine y={20} stroke="#dc2626" strokeDasharray="5 5" />
               <Line type="monotone" dataKey="delayMs" stroke={COLORS.delay} dot={false} strokeWidth={2} name="Delay" isAnimationActive={false} />
             </>
@@ -690,10 +701,11 @@ export function AnalysisPage({ analysis, meta, onClose }: Props) {
           title="Packet Loss Ratio"
           subtitle="Packet loss trend during disruption"
           data={series}
-          renderLines={() => (
+          isLight={isLight}
+          renderLines={(_zoom, _handlers, axisStyle, tooltipStyle) => (
             <>
-              <YAxis tick={AXIS_STYLE} label={{ value: 'Loss (%)', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 11 }} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => [`${Number(value).toFixed(2)}%`, 'Packet Loss']} />
+              <YAxis tick={axisStyle} label={{ value: 'Loss (%)', angle: -90, position: 'insideLeft', fill: isLight ? '#475569' : '#94a3b8', fontSize: 11 }} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${Number(value).toFixed(2)}%`, 'Packet Loss']} />
               <ReferenceLine y={1} stroke="#dc2626" strokeDasharray="5 5" />
               <Line type="monotone" dataKey="packetLoss" stroke={COLORS.loss} dot={false} strokeWidth={2} name="Packet Loss" isAnimationActive={false} />
             </>
@@ -705,10 +717,11 @@ export function AnalysisPage({ analysis, meta, onClose }: Props) {
           title="Vehicle Speed Profile"
           subtitle="Leader and follower response"
           data={series}
-          renderLines={() => (
+          isLight={isLight}
+          renderLines={(_zoom, _handlers, axisStyle, tooltipStyle) => (
             <>
-              <YAxis tick={AXIS_STYLE} label={{ value: 'Speed (m/s)', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 11 }} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => [`${value} m/s`]} />
+              <YAxis tick={axisStyle} label={{ value: 'Speed (m/s)', angle: -90, position: 'insideLeft', fill: isLight ? '#475569' : '#94a3b8', fontSize: 11 }} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${value} m/s`]} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Line type="monotone" dataKey="speedLeader" stroke={COLORS.leader} dot={false} strokeWidth={2} name="Leader" isAnimationActive={false} />
               <Line type="monotone" dataKey="speedF1" stroke={COLORS.f1} dot={false} strokeWidth={1.5} name="Follower 1" isAnimationActive={false} />
@@ -723,10 +736,11 @@ export function AnalysisPage({ analysis, meta, onClose }: Props) {
           title="Spacing Error"
           subtitle="Longitudinal formation accuracy"
           data={series}
-          renderLines={() => (
+          isLight={isLight}
+          renderLines={(_zoom, _handlers, axisStyle, tooltipStyle) => (
             <>
-              <YAxis tick={AXIS_STYLE} label={{ value: 'Error (m)', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 11 }} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => [`${Number(value).toFixed(3)} m`, 'Spacing Error']} />
+              <YAxis tick={axisStyle} label={{ value: 'Error (m)', angle: -90, position: 'insideLeft', fill: isLight ? '#475569' : '#94a3b8', fontSize: 11 }} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${Number(value).toFixed(3)} m`, 'Spacing Error']} />
               <ReferenceLine y={1.5} stroke="#dc2626" strokeDasharray="5 5" />
               <ReferenceLine y={0} stroke="#16a34a" strokeDasharray="3 3" />
               <Line type="monotone" dataKey="spacingError" stroke={COLORS.spacing} dot={false} strokeWidth={2} name="Spacing Error" isAnimationActive={false} />
@@ -739,10 +753,11 @@ export function AnalysisPage({ analysis, meta, onClose }: Props) {
           title="String Stability Index"
           subtitle="Formation stability quality"
           data={series}
-          renderLines={() => (
+          isLight={isLight}
+          renderLines={(_zoom, _handlers, axisStyle, tooltipStyle) => (
             <>
-              <YAxis tick={AXIS_STYLE} domain={[0, 1]} label={{ value: 'SSI', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 11 }} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => [Number(value).toFixed(4), 'SSI']} />
+              <YAxis tick={axisStyle} domain={[0, 1]} label={{ value: 'SSI', angle: -90, position: 'insideLeft', fill: isLight ? '#475569' : '#94a3b8', fontSize: 11 }} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(value) => [Number(value).toFixed(4), 'SSI']} />
               <ReferenceLine y={0.8} stroke="#16a34a" strokeDasharray="4 4" />
               <Line type="monotone" dataKey="stringStabilityIndex" stroke={COLORS.ssi} dot={false} strokeWidth={2} name="SSI" isAnimationActive={false} />
             </>
@@ -754,10 +769,11 @@ export function AnalysisPage({ analysis, meta, onClose }: Props) {
           title="RSU Signal Strength"
           subtitle="Vehicle-to-infrastructure signal quality"
           data={series}
-          renderLines={() => (
+          isLight={isLight}
+          renderLines={(_zoom, _handlers, axisStyle, tooltipStyle) => (
             <>
-              <YAxis tick={AXIS_STYLE} label={{ value: 'Signal (dBm)', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 11 }} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => [`${Number(value).toFixed(1)} dBm`, 'RSU Signal']} />
+              <YAxis tick={axisStyle} label={{ value: 'Signal (dBm)', angle: -90, position: 'insideLeft', fill: isLight ? '#475569' : '#94a3b8', fontSize: 11 }} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${Number(value).toFixed(1)} dBm`, 'RSU Signal']} />
               <ReferenceLine y={-80} stroke="#dc2626" strokeDasharray="5 5" />
               <Line type="monotone" dataKey="rsuSignalDbm" stroke={COLORS.rsu} dot={false} strokeWidth={2} name="RSU Signal" isAnimationActive={false} />
             </>

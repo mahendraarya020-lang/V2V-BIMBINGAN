@@ -1,17 +1,26 @@
 import type { VehicleState } from '../types/sim'
 import { formatSpeedMs } from '../utils/units'
+import { LightningIcon, RefreshIcon } from './Icons'
 
 type Props = {
   vehicle: VehicleState | null
   vehicles?: VehicleState[]
   onSwap?: (idA: string, idB: string) => void
+  onClose?: () => void
 }
 
-export function VehicleDetail({ vehicle, vehicles = [], onSwap }: Props) {
+export function VehicleDetail({ vehicle, vehicles = [], onSwap, onClose }: Props) {
   if (!vehicle) {
     return (
       <section className="vehicle-detail">
-        <h4>Vehicle Detail</h4>
+        <div className="vehicle-detail-head">
+          <h4>Vehicle Detail</h4>
+          {onClose && (
+            <button className="vehicle-detail-close" onClick={onClose} title="Close telemetry" type="button">
+              &times;
+            </button>
+          )}
+        </div>
         <p>Click a vehicle on the simulation canvas to inspect its live telemetry.</p>
       </section>
     )
@@ -40,9 +49,16 @@ export function VehicleDetail({ vehicle, vehicles = [], onSwap }: Props) {
           {vehicle.id.replace('b_', '').toUpperCase()}
           {vehicle.crashed && <span style={{ color: 'var(--bad)', marginLeft: '0.4rem', fontSize: '0.8rem' }}>CRASHED</span>}
         </h4>
-        <span className={`badge ${vehicle.crashed ? 'bad' : isLeader ? 'ok' : ''}`}>
-          Platoon {platoon} – {role}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span className={`badge ${vehicle.crashed ? 'bad' : isLeader ? 'ok' : ''}`}>
+            Platoon {platoon} – {role}
+          </span>
+          {onClose && (
+            <button className="vehicle-detail-close" onClick={onClose} title="Close telemetry" type="button">
+              &times;
+            </button>
+          )}
+        </div>
       </div>
       <ul className="vehicle-detail-grid">
         <li>
@@ -79,8 +95,9 @@ export function VehicleDetail({ vehicle, vehicles = [], onSwap }: Props) {
 
       {vehicles.length > 0 && onSwap && !vehicle.crashed && otherLanes.length > 0 && (
         <div className="v2x-cooperative-actions" style={{ marginTop: '0.9rem', borderTop: '1px dashed rgba(255,255,255,0.08)', paddingTop: '0.8rem' }}>
-          <h5 style={{ margin: '0 0 0.45rem 0', fontSize: '0.78rem', color: '#818cf8', fontWeight: 600 }}>
-            ⚡ V2X Cooperative Transfer
+          <h5 style={{ margin: '0 0 0.45rem 0', fontSize: '0.78rem', color: '#818cf8', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <LightningIcon style={{ color: '#818cf8' }} />
+            <span>V2X Cooperative Transfer</span>
           </h5>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.35rem' }}>
             {otherLanes.map((lane) => {
@@ -118,7 +135,8 @@ export function VehicleDetail({ vehicle, vehicles = [], onSwap }: Props) {
                   onClick={() => onSwap(vehicle.id, targetCandidate.id)}
                   type="button"
                 >
-                  🔄 Transfer to Platoon {targetPlatoonLetter}
+                  <RefreshIcon style={{ width: '12px', height: '12px' }} />
+                  <span>Transfer to Platoon {targetPlatoonLetter}</span>
                 </button>
               )
             })}

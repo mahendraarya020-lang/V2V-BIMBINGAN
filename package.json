@@ -22,5 +22,8 @@
     "cacc"
   ],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "puppeteer": "^25.0.4"
+  }
 }

@@ -17,27 +17,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error('[app-error]', error, info)
-    // #region agent log
-    fetch('http://127.0.0.1:7701/ingest/b7762f81-002a-4b26-9a43-bc49f3186196', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '2b9c00' },
-      body: JSON.stringify({
-        sessionId: '2b9c00',
-        runId: 'pre-fix',
-        hypothesisId: 'H0',
-        location: 'ErrorBoundary.tsx:componentDidCatch',
-        message: 'React error boundary captured runtime exception',
-        data: {
-          name: error?.name,
-          message: error?.message,
-          stack: error?.stack?.slice(0, 1200),
-          componentStack: info?.componentStack?.slice(0, 1200),
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {})
-    // #endregion
+    console.error('[app-error]', error, info.componentStack)
   }
 
   render() {

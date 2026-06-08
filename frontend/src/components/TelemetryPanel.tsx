@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { SimulationParams, SimulationTelemetry, VehicleState } from '../types/sim'
 import { formatChannelBandwidthHz, formatSpeedMs, platoonSpeedMs } from '../utils/units'
+import { RocketIcon, SignalIcon } from './Icons'
 
 type Props = {
   telemetry: SimulationTelemetry
@@ -76,18 +77,20 @@ export function TelemetryPanel({ telemetry, vehicles, params }: Props) {
         <button
           className={`ck-tab ${activeTab === 'dynamics' ? 'active' : ''}`}
           onClick={() => setActiveTab('dynamics')}
-          style={{ flex: 1, padding: '6px 4px', fontSize: '0.74rem' }}
+          style={{ flex: 1, padding: '6px 4px', fontSize: '0.74rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
           type="button"
         >
-          🚀 Dynamics
+          <RocketIcon />
+          <span>Dynamics</span>
         </button>
         <button
           className={`ck-tab ${activeTab === 'network' ? 'active' : ''}`}
           onClick={() => setActiveTab('network')}
-          style={{ flex: 1, padding: '6px 4px', fontSize: '0.74rem' }}
+          style={{ flex: 1, padding: '6px 4px', fontSize: '0.74rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
           type="button"
         >
-          📡 5G Network
+          <SignalIcon />
+          <span>5G Network</span>
         </button>
       </div>
 

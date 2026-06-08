@@ -99,8 +99,7 @@ export function useDataLogger(currentState: SimulationState | null) {
       const st = stateRef.current
       if (!st) return
 
-      const now = Date.now()
-      const elapsedS = (now - startTimeRef.current) / 1000
+      const elapsedS = st.elapsedSeconds ?? 0
 
       // Only capture leader speed if vehicles exist
       // Platoon index 0 leader is always the first vehicle of that lane. Let's get the absolute leader (usually ID L0 or first in array)

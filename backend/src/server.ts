@@ -89,6 +89,8 @@ const params: SimulationParams = {
 }
 
 let followerCount = 3
+/** Current simulation speed multiplier. 1 = real-time, 2 = 2x, 4 = 4x. */
+let simSpeedMultiplier: 1 | 2 | 4 = 1
 
 // â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -326,6 +328,7 @@ function calculateRsuSignalDbm(leaderX: number): number {
 
 function resetSimulationState(nextCount = platoons.length || DEFAULT_PLATOON_COUNT): void {
   running = false
+  simSpeedMultiplier = 1
   platoons = createPlatoons(nextCount)
   emulators = platoons.map(() => new NetworkEmulator())
   manualInput = { throttle: 0.4, brake: 0 }
@@ -335,6 +338,7 @@ function resetSimulationState(nextCount = platoons.length || DEFAULT_PLATOON_COU
   lastTickTime = 0
   collisionCooldownUntil = 0
   broadcastAccumulator = 0
+  session.reset()
 }
 
 function resizePlatoonFollowers(platoon: VehicleState[], lane: number, desiredFollowers: number): VehicleState[] {
@@ -419,6 +423,7 @@ function getState(): SimulationState {
     sessionId: 'active-session',
     timestamp: Date.now(),
     running,
+    simSpeed: simSpeedMultiplier,
     vehicles,
     params,
     telemetry: {
@@ -440,6 +445,7 @@ function getState(): SimulationState {
       avgDynamicPacketLoss: Number(avgDynamicPacketLoss.toFixed(1)),
       v2vTopology: params.v2vTopology,
     },
+    elapsedSeconds: session.getSimulatedElapsedS(),
   }
 }
 
@@ -525,13 +531,20 @@ function stepPlatoon(
     : 0
   const baseThrottle = isPrimaryPlatoon ? manualInput.throttle : Math.max(0.4, autoThrottle)
 
+  const isLeaderBeingOvertaken = platoons.some(p =>
+    p.some(v => v.overtakeTargetVehicleId === leaderVeh.id && v.overtakePhase === 'passing')
+  )
+  const leaderOvertakeBrake = isLeaderBeingOvertaken && leaderVeh.speed > params.targetSpeed * 0.85 ? 0.35 : 0
+  const leaderOvertakeThrottleMult = isLeaderBeingOvertaken ? 0.2 : 1
+
   const leaderBrake = Math.max(
     isPrimaryPlatoon ? manualInput.brake : 0,
     humanBrake,
     speedRegBrake,
-    coopBrake
+    coopBrake,
+    leaderOvertakeBrake
   )
-  const leaderThrottle = humanBrake > 0 ? 0 : baseThrottle * coopThrottleMult
+  const leaderThrottle = humanBrake > 0 ? 0 : baseThrottle * coopThrottleMult * leaderOvertakeThrottleMult
   let nextLeader = updateLeader(leaderVeh, dtSec, leaderThrottle, leaderBrake)
   saveVehicleStateToHistory(nextLeader.id, nextLeader.x, nextLeader.speed, nextLeader.accel)
   const now = Date.now()
@@ -686,6 +699,7 @@ function stepPlatoon(
       const ssi = Math.max(0, 1 - Math.abs(spacingError) / 20)
       const followerSpeeds = sorted.slice(1).map((vehicle) => vehicle.speed)
       session.addSample(
+        session.getSimulatedElapsedS(),
         effectiveLatency(),
         spacingError,
         vehicleDynLoss,
@@ -700,6 +714,27 @@ function stepPlatoon(
       )
     }
 
+    // Apply Overtaking (Swap) FSM Speed overrides
+    let finalAccelCmd = accelCmd
+    if (updatedCurrent.overtakePhase === 'passing') {
+      // Overtaker: accelerate to pass target
+      const targetPassingSpeed = Math.min(42.0, params.targetSpeed * 1.25)
+      const passAccel = (targetPassingSpeed - updatedCurrent.speed) * 1.5
+      const passAccelClamped = Math.min(3.5, Math.max(-6.0, passAccel))
+      finalAccelCmd = Math.min(passAccelClamped, accelCmd)
+    } else {
+      // Overtaken follower: cooperatively slow down
+      const isBeingOvertaken = platoons.some(p =>
+        p.some(v => v.overtakeTargetVehicleId === updatedCurrent.id && v.overtakePhase === 'passing')
+      )
+      if (isBeingOvertaken) {
+        const slowTargetSpeed = params.targetSpeed * 0.85
+        const slowAccel = (slowTargetSpeed - updatedCurrent.speed) * 1.0
+        const slowAccelClamped = Math.min(1.0, Math.max(-2.0, slowAccel))
+        finalAccelCmd = Math.min(slowAccelClamped, accelCmd)
+      }
+    }
+
     const actualGap = preceding.x - updatedCurrent.x
     const desiredGap = params.standstillDistance + effectiveHeadway * updatedCurrent.speed
     const spacingCritical = actualGap < desiredGap
@@ -708,7 +743,7 @@ function stepPlatoon(
     const updatedFollowerState = updateFollower(
       { ...updatedCurrent, dynamicPacketLoss: vehicleDynLoss },
       dtSec,
-      accelCmd,
+      finalAccelCmd,
       { maxDecelMs2 },
     )
     saveVehicleStateToHistory(updatedFollowerState.id, updatedFollowerState.x, updatedFollowerState.speed, updatedFollowerState.accel)
@@ -870,6 +905,23 @@ function stepTransferFsm(): void {
           })
         }
 
+        if (v.overtakePhase === 'changing-out') {
+          // Instead of stabilizing, transition to passing phase
+          return {
+            ...v,
+            transferPhase: null,
+            overtakePhase: 'passing' as const,
+            maneuverTimer: undefined,
+            maneuverDuration: undefined,
+            maneuverStartY: undefined,
+            maneuverTargetY: undefined,
+            headwayOverride: undefined,
+            forceAcc: false,
+          }
+        }
+
+        const isChangingBack = v.overtakePhase === 'changing-back'
+
         return {
           ...v,
           transferPhase: 'stabilizing' as const,
@@ -880,17 +932,82 @@ function stepTransferFsm(): void {
           stabilizeStartMs: now,
           headwayOverride: v.headwayOverride ?? (params.timeHeadway * 1.5),
           forceAcc: true,  // remain in ACC during cooldown
+          ...(isChangingBack && {
+            overtakePhase: null,
+            overtakeTargetVehicleId: null,
+            overtakeOriginalLane: undefined,
+          })
         }
       }
       return v
     }),
   )
 }
+function stepOvertakeFsm(): void {
+  const all = getAllVehicles()
+
+  all.forEach((v) => {
+    if (v.overtakePhase === 'passing' && v.overtakeTargetVehicleId) {
+      const target = all.find((t) => t.id === v.overtakeTargetVehicleId)
+      if (!target || target.crashed) {
+        // Target is gone or crashed, cancel overtake
+        platoons = platoons.map((p) =>
+          p.map((u) =>
+            u.id === v.id ? { ...u, overtakePhase: null, overtakeTargetVehicleId: null, overtakeOriginalLane: undefined } : u
+          )
+        )
+        return
+      }
+
+      // Check if overtaker is safely ahead of target
+      const safetyClearance = VEHICLE_LENGTH_M + params.standstillDistance + 2.0
+      if (v.x > target.x + safetyClearance) {
+        // Overtake complete! Initiate lane change back to original lane in front of target
+        const origLane = v.overtakeOriginalLane ?? 0
+        const srcLane = v.y
+        const dstLane = origLane
+
+        // Remove from current passing lane
+        platoons[srcLane] = platoons[srcLane].filter((u) => u.id !== v.id)
+
+        const vkTransferring: VehicleState = {
+          ...v,
+          y: dstLane,
+          targetLane: dstLane,
+          transferPhase: 'in-transit',
+          transferTargetLane: dstLane,
+          overtakePhase: 'changing-back',
+          forceAcc: true,
+          headwayOverride: params.timeHeadway * STABILIZE_HEADWAY_MULT,
+          maneuverTimer: 0,
+          maneuverDuration: 2.5,
+          maneuverStartY: v.wy,
+          maneuverTargetY: dstLane,
+          transferSourceSuccessorId: target.id, // Target is now the successor
+        }
+
+        if (!platoons[dstLane]) platoons[dstLane] = []
+        platoons[dstLane] = [...platoons[dstLane], vkTransferring]
+
+        // Re-sort and recompute predecessor references
+        platoons[dstLane] = recomputePredecessorIds(sortPlatoonByLongitudinal(platoons[dstLane]))
+
+        io.emit('sim:transferCooperativeReady', {
+          vehicleId: v.id,
+          targetLane: dstLane,
+          message: `${v.id.toUpperCase()} has passed ${target.id.toUpperCase()} physically. Returning to original lane.`,
+        })
+      }
+    }
+  })
+}
 
 
 const simulationTimer = setInterval(() => {
   if (!running) return
-  const dtSec = config.tickMs / 1000
+  // Multiply dt by speed multiplier so physics advances faster each tick
+  const dtSec = (config.tickMs / 1000) * simSpeedMultiplier
+  session.advance(dtSec)
   const now = Date.now()
 
   if (lastTickTime > 0) {
@@ -903,8 +1020,11 @@ const simulationTimer = setInterval(() => {
     stepPlatoon(platoon, emulators[index] ?? new NetworkEmulator(), dtSec, index === 0),
   )
 
-  // FSM: detect Phase 3 â†’ 4 lane-arrival transitions
+  // FSM: detect Phase 3 -> 4 lane-arrival transitions
   stepTransferFsm()
+
+  // FSM: detect same-lane overtaking completion
+  stepOvertakeFsm()
 
   // Global 2-D collision check â€” crashes vehicles and emits event if needed
   const collision = detectAndApplyCollisions()
@@ -938,6 +1058,20 @@ io.on('connection', (socket) => {
     lastTickTime = 0
     broadcastAccumulator = 0
     running = true
+    io.emit('sim:state', getState())
+  })
+
+  socket.on('sim:configure', (payload: unknown) => {
+    const source = payload && typeof payload === 'object' ? payload as { platoonCount?: unknown; followerCount?: unknown } : {}
+    const requestedCount = typeof source.platoonCount === 'number' ? clampPlatoonCount(source.platoonCount) : platoons.length
+    if (typeof source.followerCount === 'number') {
+      followerCount = clampFollowerCount(source.followerCount)
+    }
+    resetSimulationState(requestedCount)
+    session.reset()
+    lastTickTime = 0
+    broadcastAccumulator = 0
+    running = false
     io.emit('sim:state', getState())
   })
 
@@ -979,6 +1113,14 @@ io.on('connection', (socket) => {
     if (kind === 'humanBrake') humanBrakingUntil = now + 2500
     if (kind === 'latencySpike') latencySpikeUntil = now + 3000
     if (kind === 'packetDrop') packetDropUntil = now + 3000
+  })
+
+  socket.on('sim:setSpeed', (payload: unknown) => {
+    if (!payload || typeof payload !== 'object') return
+    const raw = (payload as { speed?: unknown }).speed
+    if (raw !== 1 && raw !== 2 && raw !== 4) return
+    simSpeedMultiplier = raw
+    io.emit('sim:state', getState())
   })
 
   socket.on('sim:swapVehicles', (payload: unknown) => {
@@ -1062,15 +1204,187 @@ io.on('connection', (socket) => {
         })
       }
     } else {
-      // â”€â”€ Same-lane swap: exchange longitudinal positions (overtake) â”€â”€
-      const swappedA: VehicleState = { ...vA, x: vB.x, speed: vB.speed, accel: vB.accel }
-      const swappedB: VehicleState = { ...vB, x: vA.x, speed: vA.speed, accel: vA.accel }
-      const lane = vA.y
-      if (platoons[lane]) {
-        platoons[lane] = platoons[lane].map((vehicle) =>
-          vehicle.id === idA ? swappedA : vehicle.id === idB ? swappedB : vehicle,
+      // ── Same-lane swap: exchange longitudinal positions (physical overtake) ──
+      if (platoons.length <= 1) {
+        io.emit('sim:transferRefused', {
+          vehicleId: idA,
+          reason: `Overtaking swap requires at least 2 lanes. Active lane count: ${platoons.length}.`
+        })
+        return
+      }
+
+      const isABehind = vA.x < vB.x
+      const vOvertaker = isABehind ? vA : vB
+      const vTarget = isABehind ? vB : vA
+
+      const currentLane = vOvertaker.y
+      let tempLane = 1
+      if (currentLane === 1) {
+        tempLane = 0
+      } else if (currentLane === 2) {
+        tempLane = 1
+      }
+
+      const dstSorted = platoons[tempLane] ? sortPlatoonByLongitudinal(platoons[tempLane]) : []
+      const { pred, succ } = findMergeNeighbors(dstSorted, vOvertaker.x)
+      const clearance = mergeSlotClearanceM(pred, succ, vOvertaker.x)
+
+      if (clearance.ok) {
+        // Gap is open! Move immediately.
+        const srcSorted = sortPlatoonByLongitudinal(platoons[currentLane] ?? [])
+        const vkIndexInSrc = srcSorted.findIndex((u) => u.id === vOvertaker.id)
+        const vkSuccessor = srcSorted[vkIndexInSrc + 1]
+
+        const srcPlatoonWithoutVk = (platoons[currentLane] ?? []).map((u) => {
+          if (u.id === vkSuccessor?.id) {
+            return { ...u, accel: 0 }
+          }
+          return u
+        }).filter((u) => u.id !== vOvertaker.id)
+
+        platoons[currentLane] = srcPlatoonWithoutVk
+
+        const vkTransferring: VehicleState = {
+          ...vOvertaker,
+          y: tempLane,
+          targetLane: tempLane,
+          transferPhase: 'in-transit',
+          transferTargetLane: tempLane,
+          overtakePhase: 'changing-out',
+          overtakeTargetVehicleId: vTarget.id,
+          overtakeOriginalLane: currentLane,
+          forceAcc: true,
+          headwayOverride: params.timeHeadway * STABILIZE_HEADWAY_MULT,
+          maneuverTimer: 0,
+          maneuverDuration: 2.5,
+          maneuverStartY: vOvertaker.wy,
+          maneuverTargetY: tempLane,
+          transferSourceSuccessorId: succ?.id ?? undefined,
+        }
+
+        if (!platoons[tempLane]) platoons[tempLane] = []
+        platoons[tempLane] = [...platoons[tempLane], vkTransferring]
+
+        io.emit('sim:transferCooperativeReady', {
+          vehicleId: vOvertaker.id,
+          targetLane: tempLane,
+          message: `${vOvertaker.id.toUpperCase()} is initiating physical overtaking swap. Moving to passing lane.`,
+        })
+      } else {
+        // Gap too tight! Initiate cooperative gap creation in target passing lane.
+        if (succ) {
+          platoons[tempLane] = platoons[tempLane].map((u) =>
+            u.id === succ.id ? { ...u, headwayOverride: params.timeHeadway * 2.5, forceAcc: true } : u
+          )
+        }
+
+        platoons[currentLane] = platoons[currentLane].map((u) =>
+          u.id === vOvertaker.id
+            ? {
+                ...u,
+                transferPhase: 'waiting-for-gap' as const,
+                transferTargetLane: tempLane,
+                overtakePhase: 'changing-out' as const,
+                overtakeTargetVehicleId: vTarget.id,
+                overtakeOriginalLane: currentLane,
+                transferSourceSuccessorId: succ?.id,
+              }
+            : u
+        )
+
+        io.emit('sim:transferCooperativeInit', {
+          vehicleId: vOvertaker.id,
+          targetLane: tempLane,
+          reason: `Passing lane slot is occupied (${clearance.detail}). Cooperative Gap Creation started.`,
+        })
+      }
+    }
+
+    platoons = platoons.map((platoon) => recomputePredecessorIds(sortPlatoonByLongitudinal(platoon)))
+    io.emit('sim:state', getState())
+  })
+
+  socket.on('sim:switchLane', (payload: unknown) => {
+    if (!payload || typeof payload !== 'object') return
+    const { vehicleId, targetLane } = payload as { vehicleId?: string; targetLane?: number }
+    if (typeof vehicleId !== 'string' || typeof targetLane !== 'number') return
+
+    const all = getAllVehicles()
+    const v = all.find((vehicle) => vehicle.id === vehicleId)
+    if (!v) return
+
+    const srcLane = v.y
+    const dstLane = targetLane
+
+    if (dstLane === srcLane || dstLane < 0 || dstLane >= platoons.length) return
+
+    const dstPlatoon = platoons[dstLane]
+    const dstSorted = dstPlatoon ? sortPlatoonByLongitudinal(dstPlatoon) : []
+    const { pred, succ } = findMergeNeighbors(dstSorted, v.x)
+    const clearance = mergeSlotClearanceM(pred, succ, v.x)
+
+    if (clearance.ok) {
+      // Gap is already large enough! Transition immediately.
+      const srcSorted = sortPlatoonByLongitudinal(platoons[srcLane] ?? [])
+      const vkIndexInSrc = srcSorted.findIndex((u) => u.id === v.id)
+      const vkSuccessor = srcSorted[vkIndexInSrc + 1]
+
+      const srcPlatoonWithoutVk = (platoons[srcLane] ?? []).map((u) => {
+        if (u.id === vkSuccessor?.id) {
+          return { ...u, accel: 0 }
+        }
+        return u
+      }).filter((u) => u.id !== v.id)
+
+      platoons[srcLane] = srcPlatoonWithoutVk
+
+      const vkTransferring: VehicleState = {
+        ...v,
+        y: dstLane,
+        targetLane: dstLane,
+        transferPhase: 'in-transit',
+        transferTargetLane: dstLane,
+        forceAcc: true,
+        headwayOverride: params.timeHeadway * STABILIZE_HEADWAY_MULT,
+        maneuverTimer: 0,
+        maneuverDuration: 2.5,
+        maneuverStartY: v.wy,
+        maneuverTargetY: dstLane,
+        transferSourceSuccessorId: succ?.id ?? undefined,
+      }
+
+      if (!platoons[dstLane]) platoons[dstLane] = []
+      platoons[dstLane] = [...platoons[dstLane], vkTransferring]
+
+      io.emit('sim:transferCooperativeReady', {
+        vehicleId: v.id,
+        targetLane: dstLane,
+        message: `Gap is open! Initiating lateral V2V lane change maneuver.`,
+      })
+    } else {
+      // Gap is too tight! Initiate V2X Cooperative Gap Creation.
+      if (succ) {
+        platoons[dstLane] = platoons[dstLane].map((u) =>
+          u.id === succ.id ? { ...u, headwayOverride: params.timeHeadway * 2.5, forceAcc: true } : u
         )
       }
+      
+      platoons[srcLane] = platoons[srcLane].map((u) =>
+        u.id === v.id
+          ? {
+              ...u,
+              transferPhase: 'waiting-for-gap' as const,
+              transferTargetLane: dstLane,
+              transferSourceSuccessorId: succ?.id,
+            }
+          : u
+      )
+
+      io.emit('sim:transferCooperativeInit', {
+        vehicleId: v.id,
+        targetLane: dstLane,
+        reason: `Merge slot is occupied (${clearance.detail}). 5G V2X Cooperative Gap Creation initiated.`,
+      })
     }
 
     platoons = platoons.map((platoon) => recomputePredecessorIds(sortPlatoonByLongitudinal(platoon)))

@@ -1,7 +1,8 @@
 import { animate } from 'animejs'
-import { useEffect, useRef, useState } from 'react'
-import type { MouseEvent } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { MouseEvent, WheelEvent } from 'react'
 import type { VehicleState } from '../types/sim'
+import { RefreshIcon } from './Icons'
 
 type Props = {
   vehicles: VehicleState[]
@@ -12,6 +13,7 @@ type Props = {
   running: boolean
   avgSpeedMs?: number
   theme?: 'dark' | 'light'
+  simSpeed?: 1 | 2 | 4
 }
 
 const PX_PER_METER = 4
@@ -32,6 +34,46 @@ function laneToScreenY(roadTop: number, roadHeight: number, wy: number, laneCoun
   return roadTop + (roadHeight / laneCount) * (wy + 0.5)
 }
 
+function getRoadOffsetY(worldX: number): number {
+  const cycle = 4000
+  const localX = ((worldX % cycle) + cycle) % cycle
+  const shiftAmount = 250
+  const curveLength = 600
+
+  if (localX < 1400) {
+    return 0
+  } else if (localX < 1400 + curveLength) {
+    const t = (localX - 1400) / curveLength
+    return ((1 - Math.cos(t * Math.PI)) / 2) * shiftAmount
+  } else if (localX < 3400) {
+    return shiftAmount
+  } else {
+    const t = (localX - 3400) / curveLength
+    return shiftAmount - ((1 - Math.cos(t * Math.PI)) / 2) * shiftAmount
+  }
+}
+
+function getRoadAngle(worldX: number): number {
+  const cycle = 4000
+  const localX = ((worldX % cycle) + cycle) % cycle
+  const shiftAmount = 250
+  const curveLength = 600
+
+  if (localX < 1400) {
+    return 0
+  } else if (localX < 1400 + curveLength) {
+    const t = (localX - 1400) / curveLength
+    const dy_dx = (shiftAmount / 2) * (Math.PI / curveLength) * Math.sin(t * Math.PI)
+    return Math.atan(dy_dx)
+  } else if (localX < 3400) {
+    return 0
+  } else {
+    const t = (localX - 3400) / curveLength
+    const dy_dx = -(shiftAmount / 2) * (Math.PI / curveLength) * Math.sin(t * Math.PI)
+    return Math.atan(dy_dx)
+  }
+}
+
 export function SimulationCanvas({
   vehicles,
   v2vLink,
@@ -41,6 +83,7 @@ export function SimulationCanvas({
   running,
   avgSpeedMs = 0,
   theme = 'dark',
+  simSpeed = 1,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
@@ -89,6 +132,20 @@ export function SimulationCanvas({
   const roadScrollOffsetRef = useRef(0)
   const lastDrawTimeRef = useRef(0)
 
+  // -- Manual Camera Pan State -----------------------------------------------
+  // When cameraLockedRef = false the camera no longer auto-follows the leader.
+  const [cameraLocked, setCameraLocked] = useState(true)
+  const cameraLockedRef = useRef(true)
+  // Drag tracking
+  const [isDragging, setIsDragging] = useState(false)
+  const isDraggingRef = useRef(false)
+  const dragStartXRef = useRef(0)          // clientX at drag start
+  const dragCameraStartRef = useRef(0)     // cameraX.value at drag start
+
+  useEffect(() => {
+    cameraLockedRef.current = cameraLocked
+  }, [cameraLocked])
+
   function ensureState(map: Map<string, AnimValue>, id: string, initial: number): AnimValue {
     const existing = map.get(id)
     if (existing) return existing
@@ -107,7 +164,7 @@ export function SimulationCanvas({
       if (Math.abs(v.x - xState.value) > 0.02) {
         animate(xState, {
           value: v.x,
-          duration: runningRef.current ? 360 : 220,
+          duration: runningRef.current ? (360 / simSpeed) : 220,
           ease: 'outQuad',
         })
       }
@@ -118,7 +175,7 @@ export function SimulationCanvas({
       if (Math.abs(wyVal - wyState.value) > 0.005) {
         animate(wyState, {
           value: wyVal,
-          duration: 200,
+          duration: 200 / simSpeed,
           ease: 'linear',
         })
       }
@@ -132,15 +189,14 @@ export function SimulationCanvas({
         overtakeUntilRef.current.delete(id)
       }
     }
-  }, [vehicles])
+  }, [vehicles, simSpeed])
 
   // -- Camera follow ---------------------------------------------------------
   useEffect(() => {
-    // Relative camera: Keep the leader near the centre of the screen
+    // Only auto-follow when camera is locked to leader
+    if (!cameraLockedRef.current) return
     const leader = vehicles.find((v) => v.y === 0) ?? vehicles[0]
     const targetCamera = leader ? leader.x - CAMERA_LEAD_METERS : 0
-    
-    // Animate the camera smoothly towards the leader
     if (Math.abs(targetCamera - cameraTargetRef.current) < 0.12) return
     cameraTargetRef.current = targetCamera
     animate(cameraXRef.current, {
@@ -148,14 +204,24 @@ export function SimulationCanvas({
       duration: running ? 620 : 420,
       ease: running ? 'inOutSine' : 'outQuad',
     })
-  }, [running, vehicles])
+  }, [running, vehicles, cameraLocked])
 
   useEffect(() => {
-    if (running) return
+    if (running || !cameraLockedRef.current) return
     const leader = vehicles.find((v) => v.y === 0) ?? vehicles[0]
     cameraTargetRef.current = leader ? leader.x - CAMERA_LEAD_METERS : 0
     cameraXRef.current.value = cameraTargetRef.current
   }, [running, vehicles])
+
+  // -- Re-lock camera to leader ----------------------------------------------
+  const relockCamera = useCallback(() => {
+    setCameraLocked(true)
+    cameraLockedRef.current = true
+    const leader = vehiclesRef.current.find((v) => v.y === 0) ?? vehiclesRef.current[0]
+    const targetCamera = leader ? leader.x - CAMERA_LEAD_METERS : 0
+    cameraTargetRef.current = targetCamera
+    animate(cameraXRef.current, { value: targetCamera, duration: 500, ease: 'outQuad' })
+  }, [])
 
   // -- Swap: x-nudge animation (visual cue for the user) --------------------
   useEffect(() => {
@@ -194,6 +260,18 @@ export function SimulationCanvas({
       const ctx = canvas!.getContext('2d')!
 
       try {
+        const rect = canvas!.getBoundingClientRect()
+        const dpr = Math.min(window.devicePixelRatio || 1, 2)
+        const targetW = Math.round(rect.width * dpr)
+        const targetH = Math.round(rect.height * dpr)
+
+        if (canvas!.width !== targetW || canvas!.height !== targetH) {
+          canvas!.width = targetW
+          canvas!.height = targetH
+        }
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
         const vArr = vehiclesRef.current
         const link = v2vLinkRef.current
         const selId = selectedIdRef.current
@@ -213,8 +291,8 @@ export function SimulationCanvas({
            roadScrollOffsetRef.current -= (speedMs * PX_PER_METER * dtStr)
         }
 
-        const w = canvas!.width
-        const h = canvas!.height
+        const w = rect.width
+        const h = rect.height
         const laneCount = Math.max(MIN_LANE_COUNT, ...vArr.map((v) => Math.floor(v.y) + 1))
         const cameraX = cameraXRef.current.value
         
@@ -225,42 +303,14 @@ export function SimulationCanvas({
         const screenToWorldX = (sx: number) =>
           (sx - WORLD_OFFSET_X) / PX_PER_METER + cameraX
 
+        const cameraOffsetY = getRoadOffsetY(screenToWorldX(w / 2))
+
         // -- The Warp Function -------------------------------------------------
         const applyCurve = (sx: number, sy: number) => {
-          const worldX = screenToWorldX(sx);
-          const cycle = 4000;
-          // Ensure positive modulo even for negative X
-          const localX = ((worldX % cycle) + cycle) % cycle; 
-          let offsetY = 0;
-          let angle = 0;
-          const shiftAmount = 250; // How far the road shifts laterally (pixels)
-          const curveLength = 600; // Length of the curve (meters/units)
-
-          if (localX < 1400) {
-              // Segment 1: Straight road
-              offsetY = 0;
-              angle = 0;
-          } else if (localX < 1400 + curveLength) {
-              // Segment 2: Smooth Curve Left
-              const t = (localX - 1400) / curveLength;
-              // Cosine interpolation for smooth S-curve
-              offsetY = (1 - Math.cos(t * Math.PI)) / 2 * shiftAmount; 
-              // Derivative for precise vehicle rotation
-              const dy_dx = (shiftAmount / 2) * (Math.PI / curveLength) * Math.sin(t * Math.PI);
-              angle = Math.atan(dy_dx);
-          } else if (localX < 3400) {
-              // Segment 3: Straight road (shifted)
-              offsetY = shiftAmount;
-              angle = 0;
-          } else {
-              // Segment 4: Smooth Curve Right (back to origin)
-              const t = (localX - 3400) / curveLength;
-              offsetY = shiftAmount - ((1 - Math.cos(t * Math.PI)) / 2 * shiftAmount);
-              const dy_dx = -(shiftAmount / 2) * (Math.PI / curveLength) * Math.sin(t * Math.PI);
-              angle = Math.atan(dy_dx);
-          }
-
-          return { x: sx, y: sy + offsetY, angle }
+          const worldX = screenToWorldX(sx)
+          const offsetY = getRoadOffsetY(worldX)
+          const angle = getRoadAngle(worldX)
+          return { x: sx, y: sy + offsetY - cameraOffsetY, angle }
         }
 
         // -- Clear + sky/ground ------------------------------------------------
@@ -281,12 +331,15 @@ export function SimulationCanvas({
         const roadTop = h / 2 - 80
         const roadHeight = 160
 
+        const startX = -100
+        const endX = w + 100
+
         // -- Road surface (Curved shape) ---------------------------------------
         const asphalt = ctx.createLinearGradient(0, roadTop - 300, 0, roadTop + roadHeight + 300)
         if (canvasTheme === 'light') {
-          asphalt.addColorStop(0, '#27272a')
-          asphalt.addColorStop(0.5, '#18181b')
-          asphalt.addColorStop(1, '#27272a')
+          asphalt.addColorStop(0, '#cbd5e1')
+          asphalt.addColorStop(0.5, '#94a3b8')
+          asphalt.addColorStop(1, '#cbd5e1')
         } else {
           asphalt.addColorStop(0, '#18181b')
           asphalt.addColorStop(0.5, '#111113')
@@ -294,48 +347,68 @@ export function SimulationCanvas({
         }
         ctx.fillStyle = asphalt
         ctx.beginPath()
-        for (let x = 0; x <= w + 50; x += 50) {
+        for (let x = startX; x <= endX; x += 50) {
           const mapped = applyCurve(x, roadTop)
-          if (x === 0) ctx.moveTo(mapped.x, mapped.y)
+          if (x === startX) ctx.moveTo(mapped.x, mapped.y)
           else ctx.lineTo(mapped.x, mapped.y)
         }
-        for (let x = w + 50; x >= 0; x -= 50) {
+        {
+          const mapped = applyCurve(endX, roadTop)
+          ctx.lineTo(mapped.x, mapped.y)
+        }
+        for (let x = endX; x >= startX; x -= 50) {
           const mapped = applyCurve(x, roadTop + roadHeight)
+          ctx.lineTo(mapped.x, mapped.y)
+        }
+        {
+          const mapped = applyCurve(startX, roadTop + roadHeight)
           ctx.lineTo(mapped.x, mapped.y)
         }
         ctx.fill()
 
         // Edge stripes
-        ctx.strokeStyle = 'rgba(255,255,255,0.12)'
+        ctx.strokeStyle = canvasTheme === 'light' ? 'rgba(15, 23, 42, 0.14)' : 'rgba(255,255,255,0.12)'
         ctx.lineWidth = 1
         ctx.setLineDash([])
         ctx.beginPath()
-        for (let x = 0; x <= w + 50; x += 50) {
+        for (let x = startX; x <= endX; x += 50) {
           const mapped = applyCurve(x, roadTop + 5)
-          if (x === 0) ctx.moveTo(mapped.x, mapped.y)
+          if (x === startX) ctx.moveTo(mapped.x, mapped.y)
           else ctx.lineTo(mapped.x, mapped.y)
+        }
+        {
+          const mapped = applyCurve(endX, roadTop + 5)
+          ctx.lineTo(mapped.x, mapped.y)
         }
         ctx.stroke()
         ctx.beginPath()
-        for (let x = 0; x <= w + 50; x += 50) {
+        for (let x = startX; x <= endX; x += 50) {
           const mapped = applyCurve(x, roadTop + roadHeight - 5)
-          if (x === 0) ctx.moveTo(mapped.x, mapped.y)
+          if (x === startX) ctx.moveTo(mapped.x, mapped.y)
           else ctx.lineTo(mapped.x, mapped.y)
+        }
+        {
+          const mapped = applyCurve(endX, roadTop + roadHeight - 5)
+          ctx.lineTo(mapped.x, mapped.y)
         }
         ctx.stroke()
 
         // Lane dividers (scrolling dashed lines)
-        ctx.strokeStyle = 'rgba(255,255,255,0.18)'
+        ctx.strokeStyle = canvasTheme === 'light' ? 'rgba(15, 23, 42, 0.22)' : 'rgba(255,255,255,0.18)'
         ctx.lineWidth = 1
         ctx.setLineDash([16, 16])
         ctx.lineDashOffset = -roadScrollOffsetRef.current
         for (let l = 1; l < laneCount; l++) {
           const ly = roadTop + (roadHeight / laneCount) * l
           ctx.beginPath()
-          for (let x = 0; x <= w + 50; x += 50) {
+          for (let x = startX; x <= endX; x += 50) {
             const mapped = applyCurve(x, ly)
-            if (x === 0) ctx.moveTo(mapped.x, mapped.y)
+            if (x === startX) ctx.moveTo(mapped.x, mapped.y)
             else ctx.lineTo(mapped.x, mapped.y)
+          }
+          {
+            const mapped = applyCurve(endX, ly)
+            ctx.lineTo(mapped.x, mapped.y)
           }
           ctx.stroke()
         }
@@ -381,23 +454,128 @@ export function SimulationCanvas({
         for (const rsu of visibleRsus) {
           const sx = rsu.screenX
           if (sx < -100 || sx > w + 100) continue
-          ctx.strokeStyle = canvasTheme === 'light' ? 'rgba(15,23,42,0.15)' : 'rgba(255,255,255,0.16)'
-          ctx.lineWidth = 2
-          
-          const baseMap = applyCurve(sx, roadTop - 6)
-          const topMap = applyCurve(sx, roadTop - 58)
           const nodeMap = applyCurve(sx, rsuScreenY)
           const textMap = applyCurve(sx - 11, roadTop - 74)
 
-          ctx.beginPath(); ctx.moveTo(baseMap.x, baseMap.y); ctx.lineTo(topMap.x, topMap.y); ctx.stroke()
-          ctx.fillStyle = '#818cf8'
-          ctx.beginPath(); ctx.arc(nodeMap.x, nodeMap.y, 8, 0, Math.PI * 2); ctx.fill()
-          ctx.strokeStyle = canvasTheme === 'light' ? 'rgba(129,140,248,0.38)' : 'rgba(129,140,248,0.28)'
+          ctx.save()
+          ctx.translate(nodeMap.x, nodeMap.y)
+          ctx.rotate(nodeMap.angle)
+
+          // 1. Draw the pole (metallic linear gradient)
+          const poleGrad = ctx.createLinearGradient(-3, 0, 3, 0)
+          if (canvasTheme === 'light') {
+            poleGrad.addColorStop(0, '#64748b')
+            poleGrad.addColorStop(0.5, '#cbd5e1')
+            poleGrad.addColorStop(1, '#475569')
+          } else {
+            poleGrad.addColorStop(0, '#3f3f46')
+            poleGrad.addColorStop(0.5, '#71717a')
+            poleGrad.addColorStop(1, '#27272a')
+          }
+          ctx.fillStyle = poleGrad
+          ctx.beginPath()
+          // Tapered pole: wider at bottom (58px), narrower at top (0px)
+          ctx.moveTo(-2.5, 58)
+          ctx.lineTo(2.5, 58)
+          ctx.lineTo(1.2, 0)
+          ctx.lineTo(-1.2, 0)
+          ctx.closePath()
+          ctx.fill()
+
+          // 2. Base cabinet / enclosure (power and processing unit)
+          ctx.fillStyle = canvasTheme === 'light' ? '#94a3b8' : '#3f3f46'
+          ctx.strokeStyle = canvasTheme === 'light' ? '#475569' : '#18181b'
+          ctx.lineWidth = 1
+          ctx.beginPath()
+          ctx.roundRect(-6, 44, 12, 14, 2)
+          ctx.fill()
+          ctx.stroke()
+          // Cabinet door detail
+          ctx.strokeStyle = canvasTheme === 'light' ? '#cbd5e1' : '#52525b'
+          ctx.beginPath()
+          ctx.moveTo(-2, 48)
+          ctx.lineTo(-2, 54)
+          ctx.stroke()
+
+          // 3. Mini Solar Panel (green energy source for remote RSU)
+          // Mounting bracket
+          ctx.strokeStyle = canvasTheme === 'light' ? '#475569' : '#71717a'
           ctx.lineWidth = 1.5
-          ctx.beginPath(); ctx.arc(nodeMap.x, nodeMap.y, 24, -0.85, 0.85); ctx.stroke()
-          ctx.beginPath(); ctx.arc(nodeMap.x, nodeMap.y, 38, -0.75, 0.75); ctx.stroke()
+          ctx.beginPath()
+          ctx.moveTo(0, 26)
+          ctx.lineTo(10, 22)
+          ctx.stroke()
+          // Slanted solar panel
+          ctx.fillStyle = '#1e3a8a' // Dark blue cell
+          ctx.strokeStyle = '#3b82f6' // Light blue metal frame
+          ctx.lineWidth = 1
+          ctx.save()
+          ctx.translate(10, 22)
+          ctx.rotate(-Math.PI / 6) // tilt 30 degrees
+          ctx.beginPath()
+          ctx.roundRect(-2, -8, 4, 16, 1)
+          ctx.fill()
+          ctx.stroke()
+          // Solar grid lines
+          ctx.strokeStyle = 'rgba(255,255,255,0.22)'
+          ctx.lineWidth = 0.5
+          ctx.beginPath()
+          ctx.moveTo(0, -8)
+          ctx.lineTo(0, 8)
+          ctx.moveTo(-2, 0)
+          ctx.lineTo(2, 0)
+          ctx.stroke()
+          ctx.restore()
+
+          // 4. Antenna Transceiver Box (5G MIMO Beamforming Panel)
+          ctx.fillStyle = canvasTheme === 'light' ? '#e2e8f0' : '#d4d4d8'
+          ctx.strokeStyle = canvasTheme === 'light' ? '#475569' : '#52525b'
+          ctx.lineWidth = 1
+          ctx.beginPath()
+          ctx.roundRect(-4, -14, 8, 16, 1.5)
+          ctx.fill()
+          ctx.stroke()
+
+          // 5. Blinking Status LED indicator
+          const ledOn = (now % 1000) < 500
+          if (link === 'Connected') {
+            ctx.fillStyle = ledOn ? '#10b981' : '#047857' // Active green
+          } else if (link === 'Degraded') {
+            ctx.fillStyle = ledOn ? '#f59e0b' : '#b45309' // Degraded amber
+          } else {
+            ctx.fillStyle = ledOn ? '#ef4444' : '#b91c1c' // Disconnected red
+          }
+          ctx.beginPath()
+          ctx.arc(0, -6, 1.5, 0, Math.PI * 2)
+          ctx.fill()
+
+          // 6. Realistic wave propagation ring micro-animations (expanding outward)
+          const waveTime = (now / 1500) % 1.0
+          const maxRadius = 45
+          ctx.lineWidth = 1.5
+          for (let wave = 0; wave < 3; wave++) {
+            const offset = wave / 3
+            const progress = (waveTime + offset) % 1.0
+            const radius = progress * maxRadius
+            const opacity = (1.0 - progress) * (link === 'Connected' ? 0.38 : link === 'Degraded' ? 0.22 : 0)
+            if (opacity > 0) {
+              ctx.strokeStyle = `rgba(129,140,248,${opacity})`
+              ctx.beginPath()
+              // Wave arc facing left (oncoming vehicles)
+              ctx.arc(0, -6, radius, -Math.PI / 2.5, Math.PI / 2.5)
+              ctx.stroke()
+              // Wave arc facing right (departing vehicles)
+              ctx.beginPath()
+              ctx.arc(0, -6, radius, Math.PI - Math.PI / 2.5, Math.PI + Math.PI / 2.5)
+              ctx.stroke()
+            }
+          }
+
+          ctx.restore()
+
+          // 7. Text Label
           ctx.fillStyle = canvasTheme === 'light' ? '#475569' : '#a1a1aa'
-          ctx.font = '11px Inter, Segoe UI, sans-serif'
+          ctx.font = '10px Inter, Segoe UI, sans-serif'
           ctx.fillText('RSU', textMap.x, textMap.y)
         }
 
@@ -470,6 +648,7 @@ export function SimulationCanvas({
             let nearestRsu: { worldX: number; screenX: number } | null = null
             let nearestDist = Infinity
             for (const rsu of visibleRsus) {
+              if (rsu.screenX < -20 || rsu.screenX > w + 20) continue
               const dist = Math.abs(vWorldX - rsu.worldX)
               if (dist < RSU_RANGE_M && dist < nearestDist) { nearestDist = dist; nearestRsu = rsu }
             }
@@ -548,20 +727,17 @@ export function SimulationCanvas({
             ctx.fill()
           }
 
-          // -- Drop Shadow ---------------------------------------------------
-          ctx.shadowColor = 'rgba(0,0,0,0.72)'
-          ctx.shadowBlur = 12
-          ctx.shadowOffsetX = 2
-          ctx.shadowOffsetY = 4
+          // -- Drop Shadow (Vector) ------------------------------------------
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.35)'
+          ctx.beginPath()
+          ctx.roundRect(cx + 2, cy + 3, VEHICLE_WIDTH, VEHICLE_HEIGHT, 8)
+          ctx.fill()
 
           // -- Car Body (Realistic Canvas Styling) ---------------------------
           ctx.fillStyle = bodyColor
           ctx.beginPath()
           ctx.roundRect(cx, cy, VEHICLE_WIDTH, VEHICLE_HEIGHT, 8)
           ctx.fill()
-          
-          // Clear shadow for subsequent draws
-          ctx.shadowColor = 'transparent'
 
           // Gradient Overlay to give 3D metallic feel
           const bodyGrad = ctx.createLinearGradient(cx, cy, cx, cy + VEHICLE_HEIGHT)
@@ -663,14 +839,16 @@ export function SimulationCanvas({
             ctx.fillRect(cx, cy + 3, 3, 6)
             ctx.fillRect(cx, cy + VEHICLE_HEIGHT - 9, 3, 6)
             
-            // Brake Glow
+            // Brake Glow (Vector-based)
             if (isBraking) {
-              ctx.shadowColor = 'rgba(251,113,133,0.9)'
-              ctx.shadowBlur = 12
-              ctx.fillStyle = 'rgba(251,113,133,0.68)'
+              ctx.fillStyle = 'rgba(251, 113, 133, 0.4)'
+              ctx.beginPath()
+              ctx.arc(cx - 2, cy + 6, 8, 0, Math.PI * 2)
+              ctx.arc(cx - 2, cy + VEHICLE_HEIGHT - 6, 8, 0, Math.PI * 2)
+              ctx.fill()
+              ctx.fillStyle = '#fca5a5'
               ctx.fillRect(cx - 2, cy + 3, 2, 6)
               ctx.fillRect(cx - 2, cy + VEHICLE_HEIGHT - 9, 2, 6)
-              ctx.shadowColor = 'transparent'
             }
 
             // Speed streaks at high velocity
@@ -686,16 +864,18 @@ export function SimulationCanvas({
             }
           }
 
-          // -- Crash Overlay -------------------------------------------------
+          // -- Crash Overlay (Vector-based Glow) -----------------------------
           if (crashed) {
-            ctx.shadowColor = 'rgba(251,113,133,0.55)'
-            ctx.shadowBlur = 14
-            ctx.strokeStyle = '#fb7185'
-            ctx.lineWidth = 2
+            ctx.strokeStyle = 'rgba(251, 113, 133, 0.4)'
+            ctx.lineWidth = 4
             ctx.beginPath()
-            ctx.roundRect(cx - 2, cy - 2, VEHICLE_WIDTH + 4, VEHICLE_HEIGHT + 4, 9)
+            ctx.roundRect(cx - 3, cy - 3, VEHICLE_WIDTH + 6, VEHICLE_HEIGHT + 6, 10)
             ctx.stroke()
-            ctx.shadowColor = 'transparent'
+            ctx.strokeStyle = '#fb7185'
+            ctx.lineWidth = 1.5
+            ctx.beginPath()
+            ctx.roundRect(cx - 1, cy - 1, VEHICLE_WIDTH + 2, VEHICLE_HEIGHT + 2, 9)
+            ctx.stroke()
             
             // "X" mark
             ctx.strokeStyle = '#fff1f2'
@@ -712,40 +892,46 @@ export function SimulationCanvas({
             ctx.fillText('CRASH', cx + 2, cy - 4)
           }
 
-          // -- Overtake Gold Glow --------------------------------------------
+          // -- Overtake Gold Glow (Vector-based) ------------------------------
           if (!crashed && isOvertaking) {
-            ctx.shadowColor = 'rgba(129,140,248,0.5)'
-            ctx.shadowBlur = 16
-            ctx.strokeStyle = '#a5b4fc'
-            ctx.lineWidth = 2
+            ctx.strokeStyle = 'rgba(165, 165, 252, 0.4)'
+            ctx.lineWidth = 4
             ctx.beginPath()
-            ctx.roundRect(cx, cy, VEHICLE_WIDTH, VEHICLE_HEIGHT, 8)
+            ctx.roundRect(cx - 2, cy - 2, VEHICLE_WIDTH + 4, VEHICLE_HEIGHT + 4, 9)
             ctx.stroke()
-            ctx.shadowColor = 'transparent'
-          }
-
-          // -- Selection Highlight -------------------------------------------
-          if (selId === v.id) {
-            ctx.shadowColor = 'rgba(165,180,252,0.45)'
-            ctx.shadowBlur = 14
             ctx.strokeStyle = '#a5b4fc'
             ctx.lineWidth = 1.5
             ctx.beginPath()
-            ctx.roundRect(cx - 4, cy - 4, VEHICLE_WIDTH + 8, VEHICLE_HEIGHT + 8, 10)
+            ctx.roundRect(cx, cy, VEHICLE_WIDTH, VEHICLE_HEIGHT, 8)
             ctx.stroke()
-            ctx.shadowColor = 'transparent'
           }
 
-          // -- Hover Highlight Glow ---------------------------------
-          if (hoveredId === v.id && selId !== v.id) {
-            ctx.shadowColor = 'rgba(14, 165, 233, 0.38)' // Soft cyan/blue glow
-            ctx.shadowBlur = 9
-            ctx.strokeStyle = 'rgba(14, 165, 233, 0.70)' // Soft cyan outline
-            ctx.lineWidth = 1.4
+          // -- Selection Highlight (Vector-based) -----------------------------
+          if (selId === v.id) {
+            ctx.strokeStyle = 'rgba(165, 180, 252, 0.45)'
+            ctx.lineWidth = 4
             ctx.beginPath()
-            ctx.roundRect(cx - 3.5, cy - 3.5, VEHICLE_WIDTH + 7, VEHICLE_HEIGHT + 7, 10)
+            ctx.roundRect(cx - 5, cy - 5, VEHICLE_WIDTH + 10, VEHICLE_HEIGHT + 10, 11)
             ctx.stroke()
-            ctx.shadowColor = 'transparent'
+            ctx.strokeStyle = '#a5b4fc'
+            ctx.lineWidth = 1.5
+            ctx.beginPath()
+            ctx.roundRect(cx - 3, cy - 3, VEHICLE_WIDTH + 6, VEHICLE_HEIGHT + 6, 10)
+            ctx.stroke()
+          }
+
+          // -- Hover Highlight Glow (Vector-based) ----------------------------
+          if (hoveredId === v.id && selId !== v.id) {
+            ctx.strokeStyle = 'rgba(14, 165, 233, 0.35)'
+            ctx.lineWidth = 3
+            ctx.beginPath()
+            ctx.roundRect(cx - 4.5, cy - 4.5, VEHICLE_WIDTH + 9, VEHICLE_HEIGHT + 9, 10.5)
+            ctx.stroke()
+            ctx.strokeStyle = 'rgba(14, 165, 233, 0.70)'
+            ctx.lineWidth = 1.2
+            ctx.beginPath()
+            ctx.roundRect(cx - 3, cy - 3, VEHICLE_WIDTH + 6, VEHICLE_HEIGHT + 6, 10)
+            ctx.stroke()
           }
 
           ctx.restore() // Restore un-rotated context for labels
@@ -795,6 +981,43 @@ export function SimulationCanvas({
               ctx.fillStyle = 'rgba(52,211,153,0.72)'
               ctx.fillRect(-VEHICLE_WIDTH/2, badgeH + VEHICLE_HEIGHT + 8, progressW, 3)
             }
+            ctx.restore()
+          }
+
+          // -- Overtake Phase Badge ------------------------------------------
+          const overtake = v.overtakePhase
+          if (overtake && !crashed) {
+            const overtakeLabel = overtake === 'changing-out' ? 'MOVING TO PASS LANE'
+              : overtake === 'passing' ? 'PASSING'
+              : 'RETURNING'
+            const overtakeBgColor = overtake === 'changing-out' ? 'rgba(245,158,11,0.18)'
+              : overtake === 'passing' ? 'rgba(251,113,133,0.18)'
+              : 'rgba(52,211,153,0.16)'
+            const overtakeTextColor = overtake === 'changing-out' ? '#fbbf24'
+              : overtake === 'passing' ? '#f87171'
+              : '#34d399'
+
+            ctx.font = 'bold 8px Inter, Segoe UI, sans-serif'
+            const oBadgeW = ctx.measureText(overtakeLabel).width + 10
+            const oBadgeH = 14
+            // Position below vehicle so it doesn't clash with the transfer badge (above)
+            const oBadgeY = carCenterY + VEHICLE_HEIGHT / 2 + 8
+            const mapOBadge = applyCurve(drawX, oBadgeY)
+
+            ctx.save()
+            ctx.translate(mapOBadge.x, mapOBadge.y)
+            ctx.rotate(mappedCar.angle)
+
+            ctx.fillStyle = overtakeBgColor
+            ctx.beginPath()
+            ctx.roundRect(-oBadgeW / 2, 0, oBadgeW, oBadgeH, 4)
+            ctx.fill()
+            ctx.strokeStyle = 'rgba(255,255,255,0.12)'
+            ctx.lineWidth = 1
+            ctx.stroke()
+            ctx.fillStyle = overtakeTextColor
+            ctx.fillText(overtakeLabel, -oBadgeW / 2 + 5, oBadgeH - 3)
+
             ctx.restore()
           }
 
@@ -860,6 +1083,28 @@ export function SimulationCanvas({
         ctx.fillStyle = fpsLabel >= 30 ? (canvasTheme === 'light' ? '#475569' : '#d4d4d8') : '#fb7185'
         ctx.font = 'bold 11px Inter, Segoe UI, sans-serif'
         ctx.fillText(`FPS ${fpsLabel}`, badgeX + 18, badgeY + 16)
+
+        // -- Camera Mode Badge -----------------------------------------------
+        const camLocked = cameraLockedRef.current
+        const camLabel = camLocked ? 'Follow' : 'Manual'
+        const camBadgeW = 74; const camBadgeH = 24
+        const camBadgeX = 12; const camBadgeY = 12
+        ctx.fillStyle = camLocked
+          ? (canvasTheme === 'light' ? 'rgba(79,70,229,0.10)' : 'rgba(165,180,252,0.10)')
+          : (canvasTheme === 'light' ? 'rgba(245,158,11,0.13)' : 'rgba(251,191,36,0.12)')
+        ctx.beginPath()
+        ctx.roundRect(camBadgeX, camBadgeY, camBadgeW, camBadgeH, 8)
+        ctx.fill()
+        ctx.strokeStyle = camLocked
+          ? (canvasTheme === 'light' ? 'rgba(79,70,229,0.28)' : 'rgba(165,180,252,0.25)')
+          : 'rgba(251,191,36,0.38)'
+        ctx.lineWidth = 1
+        ctx.stroke()
+        ctx.fillStyle = camLocked
+          ? (canvasTheme === 'light' ? '#4f46e5' : '#a5b4fc')
+          : (canvasTheme === 'light' ? '#b45309' : '#fbbf24')
+        ctx.font = 'bold 10px Inter, Segoe UI, sans-serif'
+        ctx.fillText(camLabel, camBadgeX + 16, camBadgeY + 16)
       } catch (error) {
         if (!drawErrorLoggedRef.current) {
           drawErrorLoggedRef.current = true
@@ -873,52 +1118,93 @@ export function SimulationCanvas({
     return () => cancelAnimationFrame(rafId)
   }, [])
 
+  // -- Drag-to-pan handlers -------------------------------------------------
+  function handleMouseDown(event: MouseEvent<HTMLCanvasElement>): void {
+    // Only drag with primary button on the canvas (not on a vehicle click area)
+    if (event.button !== 0) return
+    isDraggingRef.current = false   // reset – we call this on mousedown, actual drag starts on move
+    setIsDragging(false)
+    dragStartXRef.current = event.clientX
+    dragCameraStartRef.current = cameraXRef.current.value
+    // Attach window-level listeners to capture drag outside canvas
+    window.addEventListener('mousemove', handleWindowMouseMove)
+    window.addEventListener('mouseup', handleWindowMouseUp)
+  }
+
+  function handleWindowMouseMove(event: globalThis.MouseEvent): void {
+    const dx = event.clientX - dragStartXRef.current
+    // Require at least 4px movement before committing to a drag
+    if (!isDraggingRef.current && Math.abs(dx) < 4) return
+    isDraggingRef.current = true
+    setIsDragging(true)
+    // Unlock camera from auto-follow
+    if (cameraLockedRef.current) {
+      setCameraLocked(false)
+      cameraLockedRef.current = false
+    }
+    // Pan: moving right on screen → camera moves left in world (vehicles move right)
+    // 1 screen pixel = 1/PX_PER_METER metres
+    const deltaMeter = -dx / PX_PER_METER
+    cameraXRef.current.value = dragCameraStartRef.current + deltaMeter
+    cameraTargetRef.current = cameraXRef.current.value
+  }
+
+  function handleWindowMouseUp(): void {
+    window.removeEventListener('mousemove', handleWindowMouseMove)
+    window.removeEventListener('mouseup', handleWindowMouseUp)
+    setIsDragging(false)
+    // isDraggingRef stays true until next mouseDown so click handler can check it
+    setTimeout(() => { isDraggingRef.current = false }, 0)
+  }
+
+  // -- Scroll-to-pan ---------------------------------------------------------
+  function handleWheel(event: WheelEvent<HTMLCanvasElement>): void {
+    event.preventDefault()
+    if (cameraLockedRef.current) {
+      setCameraLocked(false)
+      cameraLockedRef.current = false
+    }
+    // Scroll delta in screen pixels → metres
+    const deltaMeter = (event.deltaY * 0.35) / PX_PER_METER
+    cameraXRef.current.value += deltaMeter
+    cameraTargetRef.current = cameraXRef.current.value
+  }
+
+  // -- Double-click to relock ------------------------------------------------
+  function handleDoubleClick(): void {
+    relockCamera()
+  }
+
   // -- Click-to-select -------------------------------------------------------
   function handleCanvasClick(event: MouseEvent<HTMLCanvasElement>): void {
+    // Suppress click if the user just finished dragging
+    if (isDraggingRef.current) return
     const canvas = canvasRef.current
     if (!canvas || !onVehicleClick) return
 
     const rect = canvas.getBoundingClientRect()
-    const scaleX = canvas.width / rect.width
-    const scaleY = canvas.height / rect.height
-    const clickX = (event.clientX - rect.left) * scaleX
-    const clickY = (event.clientY - rect.top) * scaleY
+    const clickX = event.clientX - rect.left
+    const clickY = event.clientY - rect.top
 
-    const roadTop = canvas.height / 2 - 80
+    const roadTop = rect.height / 2 - 80
     const roadHeight = 160
     const vArr = vehiclesRef.current
     const cameraX = cameraXRef.current.value
     const worldToScreenX = (xMeters: number) =>
       (xMeters - cameraX) * PX_PER_METER + WORLD_OFFSET_X
+    const screenToWorldX = (sx: number) =>
+      (sx - WORLD_OFFSET_X) / PX_PER_METER + cameraX
     const laneCount = Math.max(MIN_LANE_COUNT, ...vArr.map((v) => Math.floor(v.y) + 1))
+    const cameraOffsetY = getRoadOffsetY(screenToWorldX(rect.width / 2))
 
-    // The click handling should approximate reverse map or test against warped positions
     for (const v of vArr) {
       const dispWy = displayedWyRef.current.get(v.id)?.value ?? (v.wy ?? v.y)
       const carCenterY = laneToScreenY(roadTop, roadHeight, dispWy, laneCount)
       const dispX = displayedXRef.current.get(v.id)?.value ?? v.x
       const drawX = worldToScreenX(dispX)
       
-      const cycle = 4000;
-      const localX = ((dispX % cycle) + cycle) % cycle; 
-      let offsetY = 0;
-      const shiftAmount = 250; 
-      const curveLength = 600; 
-
-      if (localX < 1400) {
-          offsetY = 0;
-      } else if (localX < 1400 + curveLength) {
-          const t = (localX - 1400) / curveLength;
-          offsetY = (1 - Math.cos(t * Math.PI)) / 2 * shiftAmount; 
-      } else if (localX < 3400) {
-          offsetY = shiftAmount;
-      } else {
-          const t = (localX - 3400) / curveLength;
-          offsetY = shiftAmount - ((1 - Math.cos(t * Math.PI)) / 2 * shiftAmount);
-      }
-      
-      const warpedY = carCenterY + offsetY
-      
+      const offsetY = getRoadOffsetY(dispX)
+      const warpedY = carCenterY + offsetY - cameraOffsetY
       const bx = drawX - VEHICLE_WIDTH / 2
       const by = warpedY - VEHICLE_HEIGHT / 2
 
@@ -929,23 +1215,26 @@ export function SimulationCanvas({
     }
   }
 
+  // -- Mouse-move: hover detection only (drag handled by window listener) ----
   function handleCanvasMouseMove(event: MouseEvent<HTMLCanvasElement>): void {
+    if (isDraggingRef.current) return   // skip hover check while dragging
     const canvas = canvasRef.current
     if (!canvas) return
 
     const rect = canvas.getBoundingClientRect()
-    const scaleX = canvas.width / rect.width
-    const scaleY = canvas.height / rect.height
-    const mouseX = (event.clientX - rect.left) * scaleX
-    const mouseY = (event.clientY - rect.top) * scaleY
+    const mouseX = event.clientX - rect.left
+    const mouseY = event.clientY - rect.top
 
-    const roadTop = canvas.height / 2 - 80
+    const roadTop = rect.height / 2 - 80
     const roadHeight = 160
     const vArr = vehiclesRef.current
     const cameraX = cameraXRef.current.value
     const worldToScreenX = (xMeters: number) =>
       (xMeters - cameraX) * PX_PER_METER + WORLD_OFFSET_X
+    const screenToWorldX = (sx: number) =>
+      (sx - WORLD_OFFSET_X) / PX_PER_METER + cameraX
     const laneCount = Math.max(MIN_LANE_COUNT, ...vArr.map((v) => Math.floor(v.y) + 1))
+    const cameraOffsetY = getRoadOffsetY(screenToWorldX(rect.width / 2))
 
     let foundId: string | null = null
     for (const v of vArr) {
@@ -954,26 +1243,8 @@ export function SimulationCanvas({
       const dispX = displayedXRef.current.get(v.id)?.value ?? v.x
       const drawX = worldToScreenX(dispX)
       
-      const cycle = 4000;
-      const localX = ((dispX % cycle) + cycle) % cycle; 
-      let offsetY = 0;
-      const shiftAmount = 250; 
-      const curveLength = 600; 
-
-      if (localX < 1400) {
-          offsetY = 0;
-      } else if (localX < 1400 + curveLength) {
-          const t = (localX - 1400) / curveLength;
-          offsetY = (1 - Math.cos(t * Math.PI)) / 2 * shiftAmount; 
-      } else if (localX < 3400) {
-          offsetY = shiftAmount;
-      } else {
-          const t = (localX - 3400) / curveLength;
-          offsetY = shiftAmount - ((1 - Math.cos(t * Math.PI)) / 2 * shiftAmount);
-      }
-      
-      const warpedY = carCenterY + offsetY
-      
+      const offsetY = getRoadOffsetY(dispX)
+      const warpedY = carCenterY + offsetY - cameraOffsetY
       const bx = drawX - VEHICLE_WIDTH / 2
       const by = warpedY - VEHICLE_HEIGHT / 2
 
@@ -992,16 +1263,53 @@ export function SimulationCanvas({
     setHoveredVehicleId(null)
   }
 
+  // Determine cursor style
+  const cursorStyle = isDragging ? 'grabbing' : hoveredVehicleId ? 'pointer' : 'grab'
+
   return (
-    <canvas
-      className="sim-canvas"
-      ref={canvasRef}
-      width={960}
-      height={480}
-      onClick={handleCanvasClick}
-      onMouseMove={handleCanvasMouseMove}
-      onMouseLeave={handleCanvasMouseLeave}
-      style={{ cursor: hoveredVehicleId ? 'pointer' : 'default' }}
-    />
+    <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, width: '100%', lineHeight: 0 }}>
+      <canvas
+        className="sim-canvas"
+        ref={canvasRef}
+        onClick={handleCanvasClick}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleCanvasMouseMove}
+        onMouseLeave={handleCanvasMouseLeave}
+        onDoubleClick={handleDoubleClick}
+        onWheel={handleWheel}
+        style={{ cursor: cursorStyle, userSelect: 'none', display: 'block', width: '100%', height: '100%' }}
+      />
+      {/* Re-lock camera button — only visible when camera is in manual mode */}
+      {!cameraLocked && (
+        <button
+          onClick={relockCamera}
+          title="Double-click canvas or click here to re-lock camera to leader"
+          style={{
+            position: 'absolute',
+            top: '10px',
+            left: '10px',
+            padding: '4px 10px',
+            fontSize: '11px',
+            fontWeight: 700,
+            fontFamily: 'Inter, Segoe UI, sans-serif',
+            background: 'rgba(245,158,11,0.88)',
+            color: '#1c1a0e',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            zIndex: 10,
+            backdropFilter: 'blur(4px)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+            letterSpacing: '0.02em',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}
+        >
+          <RefreshIcon style={{ width: '12px', height: '12px' }} />
+          <span>Re-lock Camera</span>
+        </button>
+      )}
+    </div>
   )
 }

@@ -40,6 +40,11 @@ export type VehicleState = {
   /** True if this vehicle is running in local ACC mode (no leader feedforward). */
   forceAcc?: boolean
 
+  // ── Same-Lane Overtake (Swap) FSM ──────────────────────────────────────────────
+  overtakePhase?: 'changing-out' | 'passing' | 'changing-back' | null
+  overtakeTargetVehicleId?: string | null
+  overtakeOriginalLane?: number
+
   // ── Dynamic Path Loss (3GPP per-vehicle) ───────────────────────────────────────
   /** Dynamic packet loss % calculated for this vehicle this tick (when dynamicPathLoss ON). */
   dynamicPacketLoss?: number
@@ -96,9 +101,12 @@ export type SimulationState = {
   sessionId: string
   timestamp: number
   running: boolean
+  /** Simulation time-scale multiplier: 1 = normal, 2 = 2x faster, 4 = 4x faster */
+  simSpeed: 1 | 2 | 4
   vehicles: VehicleState[]
   params: SimulationParams
   telemetry: Telemetry
+  elapsedSeconds: number
 }
 
 export type ControlInput = {

@@ -36,7 +36,8 @@ const HISTORY_LIMIT = 50
 
 export class SessionManager {
   private startedAt = Date.now()
-  private lastSampleAt = 0
+  private simulatedElapsedS = 0
+  private lastSampleAt = -SERIES_INTERVAL_MS
   private series: AnalysisSample[] = []
   private collisionCount = 0
   private hzSamples: number[] = []
@@ -45,12 +46,21 @@ export class SessionManager {
 
   reset(): void {
     this.startedAt = Date.now()
-    this.lastSampleAt = 0
+    this.simulatedElapsedS = 0
+    this.lastSampleAt = -SERIES_INTERVAL_MS
     this.series = []
     this.collisionCount = 0
     this.hzSamples = []
     this.accFallbackTicks = 0
     this.totalTicks = 0
+  }
+
+  advance(dtSec: number): void {
+    this.simulatedElapsedS += dtSec
+  }
+
+  getSimulatedElapsedS(): number {
+    return this.simulatedElapsedS
   }
 
   recordCollision(): void {
@@ -78,6 +88,7 @@ export class SessionManager {
   }
 
   addSample(
+    simulatedElapsedS: number,
     delayMs: number,
     spacingError: number,
     packetLoss: number,
@@ -85,12 +96,12 @@ export class SessionManager {
     rsuSignalDbm: number,
     speeds: { leader: number; f1: number; f2: number; f3: number },
   ): void {
-    const now = Date.now()
-    if (now - this.lastSampleAt < SERIES_INTERVAL_MS) return
-    this.lastSampleAt = now
+    const simulatedElapsedMs = simulatedElapsedS * 1000
+    if (simulatedElapsedMs - this.lastSampleAt < SERIES_INTERVAL_MS) return
+    this.lastSampleAt = simulatedElapsedMs
 
     this.series.push({
-      t: Number(((now - this.startedAt) / 1000).toFixed(2)),
+      t: Number(simulatedElapsedS.toFixed(2)),
       delayMs,
       packetLoss,
       spacingError: Number(Math.abs(spacingError).toFixed(3)),
@@ -119,7 +130,7 @@ export class SessionManager {
     const payload: HistoryRecord = {
       id: `SIM-${Date.now()}`,
       createdAt: new Date().toISOString(),
-      durationSec: Math.max(1, Math.round((Date.now() - this.startedAt) / 1000)),
+      durationSec: Math.max(1, Math.round(this.simulatedElapsedS)),
       avgDelayMs: average(delays),
       avgSpacingError: average(spacings),
       maxSpacingError: Number(maxSpacing.toFixed(3)),

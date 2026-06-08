@@ -25,6 +25,11 @@ export type VehicleState = {
   stabilizeStartMs?: number
   headwayOverride?: number
   forceAcc?: boolean
+
+  // ── Same-Lane Overtake (Swap) FSM ──────────────────────────────────────────────
+  overtakePhase?: 'changing-out' | 'passing' | 'changing-back' | null
+  overtakeTargetVehicleId?: string | null
+  overtakeOriginalLane?: number
 }
 
 export type V2VTopology = 'PF' | 'L2A' | 'Hybrid'
@@ -74,9 +79,12 @@ export type SimulationState = {
   sessionId: string
   timestamp: number
   running: boolean
+  /** Simulation time-scale multiplier: 1 = normal, 2 = 2x, 4 = 4x */
+  simSpeed?: 1 | 2 | 4
   vehicles: VehicleState[]
   params: SimulationParams
   telemetry: SimulationTelemetry
+  elapsedSeconds?: number
 }
 
 export type SimulationHistory = {
