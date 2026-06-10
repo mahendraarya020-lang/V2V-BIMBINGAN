@@ -21,6 +21,10 @@ type Props = {
   onTrigger: (kind: SimulationTrigger) => void
   onSwap: (idA: string, idB: string) => void
   onSwitchLane: (vehicleId: string, targetLane: number) => void
+  running: boolean
+  onStart: () => void
+  onStop: () => void
+  onReset: () => void
 }
 
 type Tab = 'network' | 'scenarios' | 'maneuvers'
@@ -29,11 +33,11 @@ type Tab = 'network' | 'scenarios' | 'maneuvers'
 
 function SliderRow({
   label,
-  min, max, step = 1, value, format, onChange, disabled,
+  min, max, step = 1, value, format, onChange, disabled, bgGradient,
 }: {
   label: string; min: number; max: number; step?: number
   value: number; format: (v: number) => string; onChange: (v: number) => void
-  disabled?: boolean
+  disabled?: boolean; bgGradient?: string
 }) {
   return (
     <div className="ck-slider" style={disabled ? { opacity: 0.38, pointerEvents: 'none' } : undefined}>
@@ -46,6 +50,7 @@ function SliderRow({
         onChange={(e) => onChange(Number(e.target.value))}
         className="ck-range"
         disabled={disabled}
+        style={bgGradient ? { background: bgGradient } : undefined}
       />
     </div>
   )
@@ -54,6 +59,7 @@ function SliderRow({
 export function ControlPanel({
   params, vehicles, followerCount,
   onUpdateParams, onFollowerCountChange, onThrottleBrake, onTrigger, onSwap, onSwitchLane,
+  running, onStart, onStop, onReset,
 }: Props) {
   const [tab, setTab] = useState<Tab>('network')
   const [firstId, setFirstId] = useState('')
@@ -137,15 +143,18 @@ export function ControlPanel({
             </div>
 
             <SliderRow label="One-Way Latency" min={5} max={20} value={params.latencyMs}
-              format={formatLatency} onChange={(v) => onUpdateParams({ latencyMs: v })} />
+              format={formatLatency} onChange={(v) => onUpdateParams({ latencyMs: v })}
+              bgGradient="linear-gradient(to right, rgba(52, 211, 153, 0.25) 0%, rgba(52, 211, 153, 0.25) 30%, rgba(251, 191, 36, 0.22) 65%, rgba(251, 113, 133, 0.28) 100%)" />
             <SliderRow
               label="Packet Loss Rate (PLR)" min={0} max={30} step={0.5} value={params.packetLossPercent}
               format={formatPlr} onChange={(v) => onUpdateParams({ packetLossPercent: v })}
               disabled={params.dynamicPathLoss}
+              bgGradient="linear-gradient(to right, rgba(52, 211, 153, 0.25) 0%, rgba(251, 191, 36, 0.22) 40%, rgba(251, 113, 133, 0.28) 80%)"
             />
-            <SliderRow label="Channel Bandwidth (B)" min={5} max={1000} step={5} value={channelMhz}
+            <SliderRow label="Channel Bandwidth (B)" min={5} max={5000} step={5} value={channelMhz}
               format={formatChannelBandwidthMHz}
-              onChange={(v) => onUpdateParams({ channelBandwidthHz: mhzToHz(v) })} />
+              onChange={(v) => onUpdateParams({ channelBandwidthHz: mhzToHz(v) })}
+              bgGradient="linear-gradient(to right, rgba(251, 113, 133, 0.28) 0%, rgba(251, 191, 36, 0.22) 20%, rgba(52, 211, 153, 0.25) 60%)" />
 
             <div className="ck-divider" />
 
@@ -169,11 +178,14 @@ export function ControlPanel({
             </div>
 
             <SliderRow label="Reference Speed (v₀)" min={5} max={42} step={1} value={params.targetSpeed}
-              format={formatSpeedMs} onChange={(v) => onUpdateParams({ targetSpeed: v })} />
+              format={formatSpeedMs} onChange={(v) => onUpdateParams({ targetSpeed: v })}
+              bgGradient="linear-gradient(to right, rgba(52, 211, 153, 0.25) 0%, rgba(251, 191, 36, 0.22) 50%, rgba(251, 113, 133, 0.28) 90%)" />
             <SliderRow label="Time Headway (h)" min={0.5} max={3} step={0.1} value={params.timeHeadway}
-              format={formatHeadway} onChange={(v) => onUpdateParams({ timeHeadway: v })} />
+              format={formatHeadway} onChange={(v) => onUpdateParams({ timeHeadway: v })}
+              bgGradient="linear-gradient(to right, rgba(251, 113, 133, 0.3) 0%, rgba(251, 191, 36, 0.22) 35%, rgba(52, 211, 153, 0.25) 70%)" />
             <SliderRow label="Standstill Distance (s₀)" min={4} max={20} step={0.5} value={params.standstillDistance}
-              format={formatStandstill} onChange={(v) => onUpdateParams({ standstillDistance: v })} />
+              format={formatStandstill} onChange={(v) => onUpdateParams({ standstillDistance: v })}
+              bgGradient="linear-gradient(to right, rgba(251, 113, 133, 0.3) 0%, rgba(251, 191, 36, 0.22) 30%, rgba(52, 211, 153, 0.25) 60%)" />
             <SliderRow label="Platoon Size" min={1} max={10} value={followerCount}
               format={(v) => `${v} follower${v > 1 ? 's' : ''}`} onChange={onFollowerCountChange} />
           </div>
@@ -287,6 +299,70 @@ export function ControlPanel({
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── Sticky Bottom Footer: Always-visible Start/Stop controls ── */}
+      <div className="ck-panel-footer">
+        {/* START — big glowing button when idle */}
+        {!running && (
+          <button
+            className="ck-start-hero"
+            onClick={onStart}
+            type="button"
+            id="sim-start-btn"
+          >
+            <span style={{ fontSize: '1.1rem' }}>▶</span>
+            Mulai Simulasi
+          </button>
+        )}
+
+        {/* STOP — prominent red when running */}
+        {running && (
+          <button
+            className="ck-stop-hero"
+            onClick={onStop}
+            type="button"
+            id="sim-stop-btn"
+          >
+            <span style={{ fontSize: '1.1rem' }}>■</span>
+            Stop &amp; Analisis
+          </button>
+        )}
+
+        {/* Reset always visible as secondary action */}
+        <div className="ck-panel-footer-row">
+          <button
+            className="ck-btn ck-btn-ghost"
+            style={{ flex: 1, minHeight: '34px' }}
+            onClick={onReset}
+            type="button"
+            id="sim-reset-btn"
+          >
+            ↺ Reset
+          </button>
+          <div style={{
+            flex: 2,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '0 0.5rem',
+            borderRadius: 'var(--r-xs)',
+            border: '1px solid var(--border)',
+            background: 'var(--surface-2)',
+            fontSize: '0.7rem',
+            color: 'var(--muted-2)',
+            gap: '0.35rem',
+          }}>
+            <span style={{
+              width: '6px', height: '6px', borderRadius: '50%',
+              background: running ? 'var(--ok)' : 'var(--muted-2)',
+              boxShadow: running ? '0 0 8px var(--ok)' : 'none',
+              flexShrink: 0,
+              animation: running ? 'blink 1.4s ease infinite' : 'none',
+            }} />
+            {running ? 'Simulasi Berjalan' : 'Simulasi Berhenti'}
+          </div>
+        </div>
       </div>
     </aside>
   )

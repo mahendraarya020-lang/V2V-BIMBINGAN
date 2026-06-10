@@ -1,4 +1,3 @@
-import { animate } from 'animejs'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MouseEvent, WheelEvent } from 'react'
 import type { VehicleState } from '../types/sim'
@@ -120,6 +119,8 @@ export function SimulationCanvas({
   const displayedWyRef = useRef<Map<string, AnimValue>>(new Map())
   // Tracks which vehicles are in a swap manoeuvre (for the gold glow).
   const overtakeUntilRef = useRef<Map<string, number>>(new Map())
+  // Keep track of the last physics state and time for extrapolation
+  const vehiclePhysRef = useRef<Map<string, { lastX: number; speed: number; lastTime: number }>>(new Map())
   
   // Camera & Environment
   const cameraXRef = useRef<AnimValue>({ value: 0 })
@@ -154,31 +155,20 @@ export function SimulationCanvas({
     return created
   }
 
-  // -- Sync animated positions from physics state ----------------------------
+  // -- Sync physics state updates for extrapolation --------------------------
   useEffect(() => {
     const active = new Set(vehicles.map((v) => v.id))
+    const now = performance.now()
 
     for (const v of vehicles) {
-      // X: lerp toward physics position
-      const xState = ensureState(displayedXRef.current, v.id, v.x)
-      if (Math.abs(v.x - xState.value) > 0.02) {
-        animate(xState, {
-          value: v.x,
-          duration: runningRef.current ? (360 / simSpeed) : 220,
-          ease: 'outQuad',
-        })
-      }
+      vehiclePhysRef.current.set(v.id, {
+        lastX: v.x,
+        speed: v.speed,
+        lastTime: now,
+      })
 
-      // wy: short interpolation — physics already eases it, this just bridges 20 Hz gaps
-      const wyVal = v.wy ?? v.y   // guard for old-format states
-      const wyState = ensureState(displayedWyRef.current, v.id, wyVal)
-      if (Math.abs(wyVal - wyState.value) > 0.005) {
-        animate(wyState, {
-          value: wyVal,
-          duration: 200 / simSpeed,
-          ease: 'linear',
-        })
-      }
+      ensureState(displayedXRef.current, v.id, v.x)
+      ensureState(displayedWyRef.current, v.id, v.wy ?? v.y)
     }
 
     // Remove stale entries
@@ -187,31 +177,10 @@ export function SimulationCanvas({
         displayedXRef.current.delete(id)
         displayedWyRef.current.delete(id)
         overtakeUntilRef.current.delete(id)
+        vehiclePhysRef.current.delete(id)
       }
     }
-  }, [vehicles, simSpeed])
-
-  // -- Camera follow ---------------------------------------------------------
-  useEffect(() => {
-    // Only auto-follow when camera is locked to leader
-    if (!cameraLockedRef.current) return
-    const leader = vehicles.find((v) => v.y === 0) ?? vehicles[0]
-    const targetCamera = leader ? leader.x - CAMERA_LEAD_METERS : 0
-    if (Math.abs(targetCamera - cameraTargetRef.current) < 0.12) return
-    cameraTargetRef.current = targetCamera
-    animate(cameraXRef.current, {
-      value: targetCamera,
-      duration: running ? 620 : 420,
-      ease: running ? 'inOutSine' : 'outQuad',
-    })
-  }, [running, vehicles, cameraLocked])
-
-  useEffect(() => {
-    if (running || !cameraLockedRef.current) return
-    const leader = vehicles.find((v) => v.y === 0) ?? vehicles[0]
-    cameraTargetRef.current = leader ? leader.x - CAMERA_LEAD_METERS : 0
-    cameraXRef.current.value = cameraTargetRef.current
-  }, [running, vehicles])
+  }, [vehicles])
 
   // -- Re-lock camera to leader ----------------------------------------------
   const relockCamera = useCallback(() => {
@@ -220,24 +189,32 @@ export function SimulationCanvas({
     const leader = vehiclesRef.current.find((v) => v.y === 0) ?? vehiclesRef.current[0]
     const targetCamera = leader ? leader.x - CAMERA_LEAD_METERS : 0
     cameraTargetRef.current = targetCamera
-    animate(cameraXRef.current, { value: targetCamera, duration: 500, ease: 'outQuad' })
   }, [])
 
-  // -- Swap: x-nudge animation (visual cue for the user) --------------------
-  useEffect(() => {
-    if (!pendingSwap) return
-    const { idA, idB } = pendingSwap
-    const xAState = displayedXRef.current.get(idA)
-    const xBState = displayedXRef.current.get(idB)
-    if (!xAState || !xBState) return
-    animate(xAState, {
-      keyframes: [{ value: xAState.value + 1.2, duration: 520 }, { value: xAState.value, duration: 640 }],
-      ease: 'outQuad',
-    })
-    animate(xBState, {
-      keyframes: [{ value: xBState.value - 0.9, duration: 460 }, { value: xBState.value, duration: 620 }],
-      ease: 'outQuad',
-    })
+  // -- Helper for swap wiggle/nudge visual effect ----------------------------
+  const getSwapNudge = useCallback((vId: string, now: number): number => {
+    if (!pendingSwap) return 0
+    const { idA, idB, triggeredAt } = pendingSwap
+    const elapsed = now - triggeredAt
+    
+    if (vId === idA) {
+      if (elapsed < 520) {
+        const t = elapsed / 520
+        return 1.2 * (2 * t - t * t)
+      } else if (elapsed < 1160) {
+        const t = (elapsed - 520) / 640
+        return 1.2 * (1 - t * t)
+      }
+    } else if (vId === idB) {
+      if (elapsed < 460) {
+        const t = elapsed / 460
+        return -0.9 * (2 * t - t * t)
+      } else if (elapsed < 1080) {
+        const t = (elapsed - 460) / 620
+        return -0.9 * (1 - t * t)
+      }
+    }
+    return 0
   }, [pendingSwap])
 
   // -- Mark swapped vehicles for the gold-glow effect ------------------------
@@ -278,11 +255,62 @@ export function SimulationCanvas({
         const hoveredId = hoveredIdRef.current
         const canvasTheme = themeRef.current
         const now = Date.now()
+        const perfNow = performance.now()
         
         // Calculate dt for scrolling
         if (lastDrawTimeRef.current === 0) lastDrawTimeRef.current = now
         const dtStr = (now - lastDrawTimeRef.current) / 1000
         lastDrawTimeRef.current = now
+
+        // -- Smoothly update vehicle positions (extrapolation & lerp) ----------
+        for (const v of vArr) {
+          const xState = ensureState(displayedXRef.current, v.id, v.x)
+          const wyVal = v.wy ?? v.y
+          const wyState = ensureState(displayedWyRef.current, v.id, wyVal)
+
+          if (!runningRef.current) {
+            xState.value = v.x
+            wyState.value = wyVal
+          } else {
+            // Extrapolate position using last speed and elapsed time
+            const track = vehiclePhysRef.current.get(v.id)
+            if (track) {
+              const elapsed = (perfNow - track.lastTime) / 1000
+              const extrapolatedX = track.lastX + track.speed * elapsed * simSpeed
+              const diffX = extrapolatedX - xState.value
+              if (Math.abs(diffX) > 10) {
+                xState.value = extrapolatedX
+              } else {
+                xState.value += diffX * (1 - Math.exp(-20 * dtStr))
+              }
+            } else {
+              xState.value = v.x
+            }
+
+            // Smoothly interpolate lane changes
+            const diffWy = wyVal - wyState.value
+            if (Math.abs(diffWy) > 1.5) {
+              wyState.value = wyVal
+            } else {
+              wyState.value += diffWy * (1 - Math.exp(-10 * simSpeed * dtStr))
+            }
+          }
+        }
+
+        // -- Smoothly update Camera Position -----------------------------------
+        if (cameraLockedRef.current) {
+          const leader = vArr.find((v) => v.y === 0) ?? vArr[0]
+          if (leader) {
+            const leaderVisualX = displayedXRef.current.get(leader.id)?.value ?? leader.x
+            const targetCamera = leaderVisualX - CAMERA_LEAD_METERS
+            const diffCam = targetCamera - cameraXRef.current.value
+            if (!runningRef.current) {
+              cameraXRef.current.value = targetCamera
+            } else {
+              cameraXRef.current.value += diffCam * (1 - Math.exp(-12 * simSpeed * dtStr))
+            }
+          }
+        }
         
         // Update road scroll offset based on average platoon speed
         if (runningRef.current) {
@@ -616,8 +644,8 @@ export function SimulationCanvas({
           ctx.lineWidth = 1.5
           for (let i = 0; i < platoon.length - 1; i++) {
             const a = platoon[i]; const b = platoon[i + 1]
-            const ax = worldToScreenX(displayedXRef.current.get(a.id)?.value ?? a.x)
-            const bx = worldToScreenX(displayedXRef.current.get(b.id)?.value ?? b.x)
+            const ax = worldToScreenX((displayedXRef.current.get(a.id)?.value ?? a.x) + getSwapNudge(a.id, now))
+            const bx = worldToScreenX((displayedXRef.current.get(b.id)?.value ?? b.x) + getSwapNudge(b.id, now))
             const ay = laneToScreenY(roadTop, roadHeight, dispWyMap.get(a.id) ?? a.y, laneCount)
             const by = laneToScreenY(roadTop, roadHeight, dispWyMap.get(b.id) ?? b.y, laneCount)
             
@@ -644,7 +672,7 @@ export function SimulationCanvas({
         if (link !== 'Disconnected') {
           const signal = (Math.sin(now / 140) + 1) / 2
           for (const [idx, vehicle] of vArr.entries()) {
-            const vWorldX = displayedXRef.current.get(vehicle.id)?.value ?? vehicle.x
+            const vWorldX = (displayedXRef.current.get(vehicle.id)?.value ?? vehicle.x) + getSwapNudge(vehicle.id, now)
             let nearestRsu: { worldX: number; screenX: number } | null = null
             let nearestDist = Infinity
             for (const rsu of visibleRsus) {
@@ -674,7 +702,8 @@ export function SimulationCanvas({
 
         // -- Draw individual vehicle (Realistic Canvas API render) -------------
         function drawVehicle(v: VehicleState, isLeader: boolean, baseColor: string, vehicleLabel: string) {
-          const dispX = displayedXRef.current.get(v.id)?.value ?? v.x
+          const nudge = getSwapNudge(v.id, now)
+          const dispX = (displayedXRef.current.get(v.id)?.value ?? v.x) + nudge
           const dispWy = dispWyMap.get(v.id) ?? (v.wy ?? v.y)
           const drawX = worldToScreenX(dispX)
           if (drawX < -120 || drawX > w + 120) return
@@ -922,16 +951,15 @@ export function SimulationCanvas({
 
           // -- Hover Highlight Glow (Vector-based) ----------------------------
           if (hoveredId === v.id && selId !== v.id) {
-            ctx.strokeStyle = 'rgba(14, 165, 233, 0.35)'
-            ctx.lineWidth = 3
-            ctx.beginPath()
-            ctx.roundRect(cx - 4.5, cy - 4.5, VEHICLE_WIDTH + 9, VEHICLE_HEIGHT + 9, 10.5)
-            ctx.stroke()
-            ctx.strokeStyle = 'rgba(14, 165, 233, 0.70)'
-            ctx.lineWidth = 1.2
+            ctx.save()
+            ctx.shadowColor = 'rgba(14, 165, 233, 0.8)'
+            ctx.shadowBlur = 10
+            ctx.strokeStyle = 'rgba(14, 165, 233, 0.9)'
+            ctx.lineWidth = 1.8
             ctx.beginPath()
             ctx.roundRect(cx - 3, cy - 3, VEHICLE_WIDTH + 6, VEHICLE_HEIGHT + 6, 10)
             ctx.stroke()
+            ctx.restore()
           }
 
           ctx.restore() // Restore un-rotated context for labels
@@ -1200,7 +1228,7 @@ export function SimulationCanvas({
     for (const v of vArr) {
       const dispWy = displayedWyRef.current.get(v.id)?.value ?? (v.wy ?? v.y)
       const carCenterY = laneToScreenY(roadTop, roadHeight, dispWy, laneCount)
-      const dispX = displayedXRef.current.get(v.id)?.value ?? v.x
+      const dispX = (displayedXRef.current.get(v.id)?.value ?? v.x) + getSwapNudge(v.id, Date.now())
       const drawX = worldToScreenX(dispX)
       
       const offsetY = getRoadOffsetY(dispX)
@@ -1240,7 +1268,7 @@ export function SimulationCanvas({
     for (const v of vArr) {
       const dispWy = displayedWyRef.current.get(v.id)?.value ?? (v.wy ?? v.y)
       const carCenterY = laneToScreenY(roadTop, roadHeight, dispWy, laneCount)
-      const dispX = displayedXRef.current.get(v.id)?.value ?? v.x
+      const dispX = (displayedXRef.current.get(v.id)?.value ?? v.x) + getSwapNudge(v.id, Date.now())
       const drawX = worldToScreenX(dispX)
       
       const offsetY = getRoadOffsetY(dispX)

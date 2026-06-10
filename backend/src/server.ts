@@ -1026,10 +1026,16 @@ const simulationTimer = setInterval(() => {
   // FSM: detect same-lane overtaking completion
   stepOvertakeFsm()
 
-  // Global 2-D collision check â€” crashes vehicles and emits event if needed
+  // Global 2-D collision check — crashes vehicles and emits event if needed
   const collision = detectAndApplyCollisions()
   if (collision) {
     io.emit('sim:collision', collision)
+    running = false
+    const history = session.save(params.packetLossPercent)
+    io.emit('sim:saved', history)
+    io.emit('sim:history', session.readAll())
+    io.emit('sim:analysis', { id: history.id, series: session.getSeries() })
+    io.emit('sim:state', getState())
   }
 
   session.recordControlMode(isAccFallbackActive())

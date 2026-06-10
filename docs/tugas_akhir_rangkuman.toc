@@ -1,0 +1,45 @@
+\babel@toc {indonesian}{}\relax 
+\contentsline {section}{\numberline {1}Abstrak}{3}{section.1}%
+\contentsline {section}{\numberline {2}Latar Belakang dan Motivasi Penelitian}{3}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Vehicular Platooning dan Intelligent Transportation System (ITS)}{3}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Keterbatasan Adaptive Cruise Control (ACC) Konvensional}{3}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}Teknologi 5G URLLC sebagai Enabler CACC}{3}{subsection.2.3}%
+\contentsline {subsection}{\numberline {2.4}Rumusan Masalah}{4}{subsection.2.4}%
+\contentsline {subsection}{\numberline {2.5}Tujuan Penelitian}{4}{subsection.2.5}%
+\contentsline {section}{\numberline {3}Arsitektur Sistem}{4}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Desain Arsitektur Client-Server}{4}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Stack Teknologi}{4}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}Alur Data Real-Time}{4}{subsection.3.3}%
+\contentsline {section}{\numberline {4}Model Kendaraan dan Kinematika}{5}{section.4}%
+\contentsline {subsection}{\numberline {4.1}State Kendaraan}{5}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Konstanta Fisika}{5}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}Pembaruan Posisi Kendaraan (Integrasi Euler)}{5}{subsection.4.3}%
+\contentsline {subsection}{\numberline {4.4}Model Kinematika Lateral (Lane Change)}{6}{subsection.4.4}%
+\contentsline {section}{\numberline {5}Algoritma Kontrol CACC dan ACC}{6}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Desired Gap Model (Constant Time Headway Policy)}{6}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Spacing Error dan Kecepatan Relatif}{7}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}Algoritma CACC (Cooperative Adaptive Cruise Control)}{7}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}Topologi Komunikasi V2V}{7}{subsection.5.4}%
+\contentsline {subsection}{\numberline {5.5}ACC Fallback (Radar-only Mode)}{8}{subsection.5.5}%
+\contentsline {subsection}{\numberline {5.6}Kontrol Leader (Kendaraan Pemimpin)}{8}{subsection.5.6}%
+\contentsline {section}{\numberline {6}Emulasi Jaringan 5G}{8}{section.6}%
+\contentsline {subsection}{\numberline {6.1}Arsitektur Emulator Jaringan}{8}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}Parameter Jaringan yang Dapat Dikonfigurasi}{9}{subsection.6.2}%
+\contentsline {subsection}{\numberline {6.3}Model Dynamic Path Loss (Standar 3GPP)}{9}{subsection.6.3}%
+\contentsline {subsection}{\numberline {6.4}Utilisasi Saluran dan E2E Delay}{9}{subsection.6.4}%
+\contentsline {subsection}{\numberline {6.5}Deteksi Tabrakan}{9}{subsection.6.5}%
+\contentsline {section}{\numberline {7}Metrik Evaluasi Kinerja (KPI)}{10}{section.7}%
+\contentsline {subsection}{\numberline {7.1}String Stability Index (SSI)}{10}{subsection.7.1}%
+\contentsline {subsection}{\numberline {7.2}Ringkasan KPI Simulasi}{10}{subsection.7.2}%
+\contentsline {section}{\numberline {8}Skenario Eksperimen}{10}{section.8}%
+\contentsline {subsection}{\numberline {8.1}Skenario 1: CACC dalam Kondisi Ideal (5G Sempurna)}{11}{subsection.8.1}%
+\contentsline {subsection}{\numberline {8.2}Skenario 2: Degradasi Jaringan Dinamis (RSU Path Loss)}{11}{subsection.8.2}%
+\contentsline {subsection}{\numberline {8.3}Skenario 3: Kegagalan Formasi (String Instability)}{11}{subsection.8.3}%
+\contentsline {section}{\numberline {9}Implementasi Teknis}{11}{section.9}%
+\contentsline {subsection}{\numberline {9.1}Struktur Proyek}{11}{subsection.9.1}%
+\contentsline {subsection}{\numberline {9.2}Implementasi Inti CACC}{11}{subsection.9.2}%
+\contentsline {subsection}{\numberline {9.3}Implementasi Emulator Jaringan}{12}{subsection.9.3}%
+\contentsline {subsection}{\numberline {9.4}Infrastruktur Deployment}{12}{subsection.9.4}%
+\contentsline {section}{\numberline {10}Rekap Seluruh Formula Matematis}{12}{section.10}%
+\contentsline {section}{\numberline {11}Kesimpulan}{12}{section.11}%
+\contentsline {section}{Daftar Pustaka}{13}{Item.15}%

@@ -217,7 +217,7 @@ export function SettingsPage() {
                 <span>Default Channel Bandwidth (B)</span>
                 <div className="settings-input-group">
                   <input
-                    type="number" min="5" max="1000" step="5"
+                    type="number" min="5" max="5000" step="5"
                     className="settings-input-inner"
                     value={defaultBandwidthMhz}
                     onChange={(e) => setDefaultBandwidthMhz(Number(e.target.value))}

@@ -6,7 +6,7 @@ const NUMERIC_PARAM_LIMITS = {
   standstillDistance: [4, 20],
   latencyMs: [0, 500],
   packetLossPercent: [0, 100],
-  channelBandwidthHz: [5_000_000, 1_000_000_000],
+  channelBandwidthHz: [5_000_000, 5_000_000_000],
 } as const
 
 const VALID_TOPOLOGIES: V2VTopology[] = ['PF', 'L2A', 'Hybrid']

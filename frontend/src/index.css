@@ -1673,6 +1673,334 @@ input[type="range"]::-moz-range-thumb,
   font-size: 0.72rem;
 }
 
+/* ── Button Variants ─────────────────────────────────────────────────────── */
+.ck-btn-primary {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.85), rgba(6, 182, 212, 0.75));
+  border-color: rgba(103, 232, 249, 0.4);
+  color: #fff;
+  font-weight: 620;
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.22), 0 2px 8px rgba(0,0,0,0.3);
+  transition: all 0.18s ease;
+}
+
+.ck-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 1), rgba(6, 182, 212, 0.95));
+  border-color: rgba(103, 232, 249, 0.65);
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.4), 0 4px 16px rgba(0,0,0,0.4);
+  transform: translateY(-1px);
+}
+
+.ck-btn-primary:active:not(:disabled) {
+  transform: translateY(0px);
+  box-shadow: 0 0 8px rgba(6, 182, 212, 0.2);
+}
+
+.ck-btn-danger {
+  background: linear-gradient(135deg, rgba(185, 28, 28, 0.8), rgba(251, 113, 133, 0.6));
+  border-color: rgba(251, 113, 133, 0.45);
+  color: #fff;
+  font-weight: 620;
+  box-shadow: 0 0 12px rgba(251, 113, 133, 0.18), 0 2px 8px rgba(0,0,0,0.3);
+  transition: all 0.18s ease;
+}
+
+.ck-btn-danger:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(220, 38, 38, 1), rgba(251, 113, 133, 0.85));
+  border-color: rgba(251, 113, 133, 0.65);
+  box-shadow: 0 0 20px rgba(251, 113, 133, 0.38), 0 4px 16px rgba(0,0,0,0.4);
+  transform: translateY(-1px);
+}
+
+.ck-btn-danger:active:not(:disabled) {
+  transform: translateY(0px);
+}
+
+.ck-btn-ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--muted);
+  transition: all 0.15s ease;
+}
+
+.ck-btn-ghost:hover:not(:disabled) {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.ck-btn-speed {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--muted);
+  transition: all 0.15s ease;
+  min-height: 30px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.73rem;
+}
+
+.ck-btn-speed:hover:not(:disabled) {
+  background: var(--accent-bg);
+  border-color: rgba(103, 232, 249, 0.3);
+  color: var(--accent);
+}
+
+.ck-btn-speed.active {
+  background: var(--accent-bg);
+  border-color: rgba(103, 232, 249, 0.45);
+  color: var(--accent);
+  box-shadow: 0 0 8px rgba(6, 182, 212, 0.2);
+}
+
+.ck-btn-accel {
+  background: linear-gradient(135deg, rgba(4, 120, 87, 0.7), rgba(52, 211, 153, 0.5));
+  border-color: rgba(52, 211, 153, 0.4);
+  color: #fff;
+  font-weight: 620;
+  transition: all 0.18s ease;
+}
+
+.ck-btn-accel:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(4, 120, 87, 0.95), rgba(52, 211, 153, 0.75));
+  border-color: rgba(52, 211, 153, 0.65);
+  transform: translateY(-1px);
+}
+
+.ck-btn-brake {
+  background: linear-gradient(135deg, rgba(185, 28, 28, 0.7), rgba(251, 191, 36, 0.4));
+  border-color: rgba(251, 191, 36, 0.4);
+  color: #fff;
+  font-weight: 620;
+  transition: all 0.18s ease;
+}
+
+.ck-btn-brake:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.9), rgba(251, 191, 36, 0.65));
+  border-color: rgba(251, 191, 36, 0.65);
+  transform: translateY(-1px);
+}
+
+/* Disabled state for ALL buttons */
+.ck-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  pointer-events: none;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* ── Control Panel Action Bar (sticky bottom) ────────────────────────────── */
+.ck-panel-action-bar {
+  flex-shrink: 0;
+}
+
+/* ── START button — large glowing hero button ────────────────────────────── */
+.ck-start-hero {
+  width: 100%;
+  min-height: 48px;
+  font-size: 0.92rem;
+  font-weight: 680;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: var(--r-sm);
+  background: linear-gradient(135deg, #1d4ed8, #0891b2);
+  border: 1px solid rgba(103, 232, 249, 0.5);
+  color: #fff;
+  box-shadow: 0 0 24px rgba(6, 182, 212, 0.32), 0 4px 16px rgba(0,0,0,0.4);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.ck-start-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+  transform: translateX(-100%);
+  transition: transform 0.6s ease;
+}
+
+.ck-start-hero:hover:not(:disabled)::before {
+  transform: translateX(100%);
+}
+
+.ck-start-hero:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2563eb, #06b6d4);
+  box-shadow: 0 0 36px rgba(6, 182, 212, 0.5), 0 6px 24px rgba(0,0,0,0.45);
+  transform: translateY(-2px);
+}
+
+.ck-start-hero:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 0 16px rgba(6, 182, 212, 0.25);
+}
+
+.ck-start-hero:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── STOP button ─────────────────────────────────────────────────────────── */
+.ck-stop-hero {
+  width: 100%;
+  min-height: 44px;
+  font-size: 0.86rem;
+  font-weight: 640;
+  letter-spacing: 0.02em;
+  border-radius: var(--r-sm);
+  background: linear-gradient(135deg, rgba(185, 28, 28, 0.85), rgba(251, 113, 133, 0.6));
+  border: 1px solid rgba(251, 113, 133, 0.5);
+  color: #fff;
+  box-shadow: 0 0 18px rgba(251, 113, 133, 0.22), 0 2px 10px rgba(0,0,0,0.3);
+  transition: all 0.18s ease;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.ck-stop-hero:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(220, 38, 38, 1), rgba(251, 113, 133, 0.85));
+  box-shadow: 0 0 28px rgba(251, 113, 133, 0.4), 0 4px 16px rgba(0,0,0,0.4);
+  transform: translateY(-1px);
+}
+
+.ck-stop-hero:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── Sticky bottom action footer inside left panel ───────────────────────── */
+.ck-panel-footer {
+  flex-shrink: 0;
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+  background: rgba(10, 10, 10, 0.72);
+  backdrop-filter: blur(14px);
+}
+
+.ck-panel-footer-row {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── Crash Overlay Modal ─────────────────────────────────────────────────── */
+.crash-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(8px);
+  animation: crash-fade-in 0.3s ease-out;
+}
+
+@keyframes crash-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.crash-modal {
+  width: min(520px, calc(100vw - 2rem));
+  padding: 2rem 2rem 1.75rem;
+  border-radius: var(--r-lg);
+  border: 1px solid rgba(251, 113, 133, 0.4);
+  background: linear-gradient(155deg, rgba(30, 8, 12, 0.98), rgba(20, 10, 20, 0.98));
+  box-shadow:
+    0 0 80px rgba(251, 113, 133, 0.35),
+    0 0 180px rgba(251, 113, 133, 0.12),
+    0 24px 64px rgba(0,0,0,0.7);
+  animation: crash-modal-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  text-align: center;
+}
+
+@keyframes crash-modal-in {
+  from { transform: scale(0.8) translateY(20px); opacity: 0; }
+  to   { transform: scale(1)   translateY(0);    opacity: 1; }
+}
+
+.crash-icon {
+  font-size: 3.5rem;
+  line-height: 1;
+  margin-bottom: 0.75rem;
+  animation: crash-shake 0.5s ease-out 0.2s;
+}
+
+@keyframes crash-shake {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(-8deg); }
+  40% { transform: rotate(10deg); }
+  60% { transform: rotate(-6deg); }
+  80% { transform: rotate(4deg); }
+}
+
+.crash-title {
+  font-size: 1.6rem;
+  font-weight: 780;
+  color: #fb7185;
+  letter-spacing: -0.02em;
+  text-shadow: 0 0 20px rgba(251, 113, 133, 0.6);
+  margin-bottom: 0.5rem;
+}
+
+.crash-subtitle {
+  color: #a1a1aa;
+  font-size: 0.88rem;
+  margin-bottom: 1.25rem;
+  line-height: 1.5;
+}
+
+.crash-vehicles {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: var(--r-sm);
+  border: 1px solid rgba(251, 113, 133, 0.25);
+  background: rgba(251, 113, 133, 0.08);
+  color: #fb7185;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: "SF Mono", Consolas, monospace;
+  margin-bottom: 1.5rem;
+}
+
+.crash-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+/* Screen flash effect */
+@keyframes screen-flash-red {
+  0%   { opacity: 0; }
+  15%  { opacity: 0.5; }
+  40%  { opacity: 0.25; }
+  70%  { opacity: 0.4; }
+  100% { opacity: 0; }
+}
+
+.crash-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 8999;
+  background: rgba(251, 50, 50, 0.55);
+  pointer-events: none;
+  animation: screen-flash-red 0.8s ease-out forwards;
+}
+
 .ck-canvas-col {
   min-width: 0;
   display: flex;

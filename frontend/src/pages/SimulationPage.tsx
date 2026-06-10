@@ -29,6 +29,12 @@ export function SimulationPage() {
   const elapsedSeconds = state?.elapsedSeconds ?? 0
   const [isFullscreen, setIsFullscreen] = useState(false)
 
+  // ── Crash modal state ──────────────────────────────────────────────────────
+  const [showCrashModal, setShowCrashModal] = useState(false)
+  const [crashInfo, setCrashInfo] = useState<{ between: string[]; gapMeters: number } | null>(null)
+  const [flashScreen, setFlashScreen] = useState(false)
+
+
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
     localStorage.setItem('theme', theme)
@@ -65,8 +71,10 @@ export function SimulationPage() {
 
   const defaultPlatoonCount = state ? Array.from(new Set(state.vehicles.map((v) => v.y))).length : 2
 
-  const startSimulation = useCallback((platoonCount?: number, followerCount?: number) => {
-    actions.start({ platoonCount: platoonCount ?? defaultPlatoonCount, followerCount })
+  const startSimulation = useCallback((platoonCount?: number | unknown, followerCount?: number | unknown) => {
+    const pCount = typeof platoonCount === 'number' ? platoonCount : undefined
+    const fCount = typeof followerCount === 'number' ? followerCount : undefined
+    actions.start({ platoonCount: pCount ?? defaultPlatoonCount, followerCount: fCount })
   }, [actions, defaultPlatoonCount])
 
   const stopAndAnalyze = useCallback(() => {
@@ -94,7 +102,14 @@ export function SimulationPage() {
   useEffect(() => {
     if (!lastCollision) return
     const [first, second] = lastCollision.between
-    pushToast({ title: 'Collision alert', message: `${first} <-> ${second} (gap ${lastCollision.gapMeters}m)`, kind: 'error' })
+    // Screen flash
+    setFlashScreen(true)
+    setTimeout(() => setFlashScreen(false), 900)
+    // Show crash modal
+    setCrashInfo(lastCollision)
+    setTimeout(() => setShowCrashModal(true), 350)
+    // Also push toast
+    pushToast({ title: 'TABRAKAN!', message: `${first} ↔ ${second} (jarak ${lastCollision.gapMeters}m)`, kind: 'error' })
   }, [lastCollision])
 
   useEffect(() => {
@@ -127,7 +142,17 @@ export function SimulationPage() {
       window.setTimeout(() => { pushToast({ title: 'Simulation started', message: 'Sesi simulasi aktif.', kind: 'info' }) }, 0)
     }
     if (!state.running && wasRunning) {
-      window.setTimeout(() => { pushToast({ title: 'Simulation stopped', message: 'Sesi simulasi dihentikan.', kind: 'info' }) }, 0)
+      const hasCollision = (state.telemetry.collisionCount ?? 0) > 0
+      window.setTimeout(() => {
+        if (!hasCollision) {
+          pushToast({
+            title: 'Simulation stopped',
+            message: 'Sesi simulasi dihentikan.',
+            kind: 'info',
+          })
+        }
+        // Collision case: crash modal already shown via lastCollision effect
+      }, 0)
     }
     lastRunningRef.current = state.running
     const mode = state.telemetry.controlMode
@@ -148,7 +173,12 @@ export function SimulationPage() {
   useEffect(() => {
     if (!state) return
     const handler = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return
+      if (
+        (event.target instanceof HTMLInputElement && event.target.type !== 'range') ||
+        event.target instanceof HTMLSelectElement
+      ) {
+        return
+      }
       if (event.code === 'Space') { event.preventDefault(); if (state.running) stopAndAnalyze(); else startSimulation() }
       if (event.key === 'r' || event.key === 'R') actions.reset()
       if (event.key === '1') actions.trigger('latencySpike')
@@ -308,13 +338,6 @@ export function SimulationPage() {
             })}
           </div>
 
-          <button className="ck-btn ck-btn-primary" onClick={() => startSimulation()} disabled={state.running} type="button">
-            Start
-          </button>
-          <button className="ck-btn ck-btn-danger" onClick={stopAndAnalyze} disabled={!state.running} type="button">
-            Stop & Analyze
-          </button>
-          <button className="ck-btn ck-btn-ghost" onClick={actions.reset} type="button">Reset</button>
           <button className="ck-btn ck-btn-ghost" onClick={() => navigate('/dashboard')} type="button">Dashboard</button>
         </div>
       </nav>
@@ -333,6 +356,10 @@ export function SimulationPage() {
           onTrigger={actions.trigger}
           onSwap={handleSwap}
           onSwitchLane={handleSwitchLane}
+          running={state.running}
+          onStart={startSimulation}
+          onStop={stopAndAnalyze}
+          onReset={actions.reset}
         />
 
         {/* Center: Canvas */}
@@ -433,6 +460,57 @@ export function SimulationPage() {
       </div>
 
       <Toast toasts={toasts} onDismiss={dismissToast} />
+
+      {/* ── Screen Flash on collision ── */}
+      {flashScreen && <div className="crash-flash" />}
+
+      {/* ── CRASH MODAL ── */}
+      {showCrashModal && crashInfo && (
+        <div
+          className="crash-overlay"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowCrashModal(false) }}
+        >
+          <div className="crash-modal">
+            <div className="crash-icon">💥</div>
+            <div className="crash-title">SIMULASI GAGAL</div>
+            <div className="crash-subtitle">
+              Platoon mengalami tabrakan! Jarak antar kendaraan melampaui batas aman.<br />
+              Simulasi dihentikan secara otomatis.
+            </div>
+            <div className="crash-vehicles">
+              <span>{crashInfo.between[0]?.toUpperCase()}</span>
+              <span style={{ color: '#71717a' }}>↔</span>
+              <span>{crashInfo.between[1]?.toUpperCase()}</span>
+              <span style={{ color: '#71717a', marginLeft: '0.5rem' }}>|</span>
+              <span>Jarak: {crashInfo.gapMeters}m</span>
+            </div>
+            <div className="crash-actions">
+              <button
+                className="ck-btn ck-btn-ghost"
+                style={{ minHeight: '42px', fontSize: '0.85rem' }}
+                onClick={() => {
+                  setShowCrashModal(false)
+                  actions.reset()
+                }}
+                type="button"
+              >
+                ↺ Restart
+              </button>
+              <button
+                className="ck-btn ck-btn-primary"
+                style={{ minHeight: '42px', fontSize: '0.85rem' }}
+                onClick={() => {
+                  setShowCrashModal(false)
+                  setTimeout(() => setShowAnalysis(true), 200)
+                }}
+                type="button"
+              >
+                📊 Lihat Analisis
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }

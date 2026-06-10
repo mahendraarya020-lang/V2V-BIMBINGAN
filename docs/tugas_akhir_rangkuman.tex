@@ -1,0 +1,825 @@
+\documentclass[12pt,a4paper]{article}
+
+% --- Packages ---
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[indonesian]{babel}
+\usepackage{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{tcolorbox}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{courier}
+\usepackage{mathtools}
+\usepackage{caption}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, backgrounds}
+
+% --- Page Geometry ---
+\geometry{top=2.5cm, bottom=2.5cm, left=3cm, right=2.5cm, headheight=15pt}
+
+% --- Colors ---
+\definecolor{primaryblue}{RGB}{37,99,235}
+\definecolor{accentcyan}{RGB}{6,182,212}
+\definecolor{successgreen}{RGB}{52,211,153}
+\definecolor{darkgray}{RGB}{60,60,60}
+\definecolor{sectioncolor}{RGB}{30,58,138}
+\definecolor{boxblue}{RGB}{219,234,254}
+\definecolor{boxblueborder}{RGB}{147,197,253}
+\definecolor{codegray}{RGB}{248,248,248}
+
+% --- Hyperref ---
+\hypersetup{
+  colorlinks=true,
+  linkcolor=primaryblue,
+  urlcolor=accentcyan,
+  pdftitle={Rangkuman TA: Simulator Platooning V2V Berbasis 5G},
+  pdfauthor={Mahendra Aryaputra Fitrianto},
+}
+
+% --- Section Formatting ---
+\titleformat{\section}{\large\bfseries\color{sectioncolor}}{\thesection.}{0.6em}{}[\titlerule]
+\titleformat{\subsection}{\normalsize\bfseries\color{primaryblue}}{\thesubsection.}{0.5em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\color{darkgray}}{\thesubsubsection.}{0.5em}{}
+
+% --- Header & Footer ---
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{gray}Tugas Akhir -- Simulator Platooning V2V Berbasis 5G}
+\fancyhead[R]{\small\color{gray}S1 Teknik Telekomunikasi, Telkom University}
+\fancyfoot[C]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% --- Code Listing ---
+\lstdefinestyle{codeStyle}{
+  backgroundcolor=\color{codegray},
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{primaryblue}\bfseries,
+  commentstyle=\color{gray}\itshape,
+  stringstyle=\color{successgreen},
+  frame=single,
+  framesep=6pt,
+  rulecolor=\color{boxblueborder},
+  breaklines=true,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=8pt,
+  xleftmargin=18pt,
+  tabsize=2,
+}
+
+% --- tcolorbox Styles ---
+\tcbuselibrary{skins,breakable}
+\newtcolorbox{formulabox}[1]{
+  colback=boxblue, colframe=primaryblue,
+  title={\bfseries #1},
+  fonttitle=\small\bfseries\color{white},
+  coltitle=white, boxrule=1pt, arc=4pt,
+  left=6pt, right=6pt, top=4pt, bottom=4pt, breakable
+}
+\newtcolorbox{infobox}[1]{
+  colback=yellow!10, colframe=orange!70!black,
+  title={\bfseries #1},
+  fonttitle=\small\bfseries,
+  boxrule=0.8pt, arc=4pt,
+  left=6pt, right=6pt, top=4pt, bottom=4pt, breakable
+}
+\newtcolorbox{successbox}[1]{
+  colback=green!8, colframe=successgreen,
+  title={\bfseries #1},
+  fonttitle=\small\bfseries,
+  boxrule=0.8pt, arc=4pt,
+  left=6pt, right=6pt, top=4pt, bottom=4pt, breakable
+}
+
+% ============================================================
+\begin{document}
+% ============================================================
+
+% --- Cover Page ---
+\begin{titlepage}
+  \centering
+  \vspace*{1cm}
+  {\Large\bfseries\color{sectioncolor} RANGKUMAN TUGAS AKHIR\\[0.5em]}
+  \rule{\linewidth}{2pt}\\[0.8em]
+  {\Huge\bfseries\color{primaryblue}
+    Perancangan Sistem Simulasi\\
+    Platooning \textit{Vehicle-to-Vehicle} (V2V)\\
+    Berbasis 5G\\[0.5em]}
+  \rule{\linewidth}{2pt}\\[1.5em]
+
+  {\large
+    Platform Simulasi 2D Interaktif \textit{Client-Server}\\
+    Terintegrasi Emulator Jaringan 5G URLLC\\
+    dan Algoritma Kontrol CACC/ACC
+  }\\[2.5em]
+
+  \begin{tabular}{rl}
+    \textbf{Penulis:}     & Mahendra Aryaputra Fitrianto \\
+                          & Muhammad Abduh \\
+                          & Ahmad Zulfikar \\[0.8em]
+    \textbf{Pembimbing:}  & Linda Meylani S.T., M.T. \\
+                          & Ir. Uke Kurniawan Usman, M.T. \\[0.8em]
+    \textbf{Program Studi:} & S1 Teknik Telekomunikasi \\
+    \textbf{Fakultas:}    & Teknik Elektro \\
+    \textbf{Universitas:} & Telkom University \\[0.8em]
+    \textbf{Tahun:}       & 2026 \\
+  \end{tabular}
+
+  \vfill
+  {\small\color{gray}
+    Dokumen ini adalah rangkuman akademik komprehensif yang mencakup seluruh konsep,\\
+    arsitektur, formula matematis, dan implementasi teknis dari Tugas Akhir di atas.
+  }
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Abstrak}
+% ============================================================
+
+Sistem \textit{vehicular platooning} meningkatkan efisiensi lalu lintas melalui koordinasi
+otomatis, namun rentan terhadap fluktuasi \textit{latency} dan \textit{packet loss}.
+Guna menghindari bahaya pengujian fisik, penelitian ini merancang platform simulasi 2D
+interaktif \textit{Client-Server} terintegrasi emulator 5G URLLC dan logika CACC.
+Platform ini memvalidasi keamanan formasi di bawah gangguan jaringan dinamis dan menampilkan
+analisis stabilitas secara \textit{real-time}.
+
+\begin{successbox}{Kontribusi Utama Penelitian}
+\begin{enumerate}[noitemsep]
+  \item Platform simulasi 2D \textit{client-server} berhasil memvalidasi algoritma kontrol
+        CACC secara aman, presisi, dan terukur tanpa risiko fisik.
+  \item Integrasi emulator 5G memetakan pengaruh degradasi jaringan (latensi \&
+        \textit{packet loss}) terhadap stabilitas barisan (\textit{string stability}).
+  \item Kontrol PD \textit{feedforward} terbukti efektif meminimalkan \textit{spacing error}
+        platoon di bawah gangguan jaringan nirkabel dinamis.
+\end{enumerate}
+\end{successbox}
+
+% ============================================================
+\section{Latar Belakang dan Motivasi Penelitian}
+% ============================================================
+
+\subsection{Vehicular Platooning dan Intelligent Transportation System (ITS)}
+
+Perkembangan kendaraan otonom dan komunikasi \textit{Vehicle-to-Vehicle} (V2V) merupakan
+fokus utama \textit{Intelligent Transportation System} (ITS) modern. \textit{Platooning}
+adalah formasi barisan kendaraan otomatis yang melaju bersama dengan jarak rapat seperti
+rangkaian kereta di jalan raya.
+
+\textbf{Manfaat utama platooning:}
+\begin{itemize}[noitemsep]
+  \item Penghematan bahan bakar 10--15\% akibat berkurangnya hambatan aerodinamik.
+  \item Peningkatan kapasitas jalan raya dan pengurangan kemacetan.
+  \item Pencegahan kelelahan pengemudi pada perjalanan jauh.
+  \item Potensi reduksi emisi gas buang secara signifikan.
+\end{itemize}
+
+\subsection{Keterbatasan Adaptive Cruise Control (ACC) Konvensional}
+
+\textit{Adaptive Cruise Control} (ACC) konvensional hanya mengandalkan sensor lokal seperti
+radar atau LiDAR. Karena kendaraan hanya dapat melihat kendaraan tepat di depannya, terjadi
+fenomena yang disebut \textbf{\textit{string instability}}: gangguan pengereman di depan
+diamplifikasi (diperbesar) ke kendaraan di belakang, sehingga pengereman mendadak di bagian
+depan konvoi berisiko menyebabkan tabrakan beruntun di bagian belakang.
+
+\subsection{Teknologi 5G URLLC sebagai Enabler CACC}
+
+Teknologi 5G \textit{Ultra-Reliable Low-Latency Communication} (URLLC) menjanjikan:
+\begin{itemize}[noitemsep]
+  \item Latensi \textit{end-to-end} di bawah 1 ms (teoritis) hingga 10--20 ms (praktis).
+  \item Keandalan paket data di atas 99{,}999\%.
+  \item Kemampuan transmisi data multi-kendaraan secara simultan dalam frekuensi tinggi.
+\end{itemize}
+
+Dengan memanfaatkan 5G V2X, kendaraan pengikut tidak hanya mengandalkan radar, tetapi
+juga menerima informasi instan mengenai percepatan, kecepatan, dan posisi kendaraan lain
+secara \textit{real-time}.
+
+\subsection{Rumusan Masalah}
+
+Bagaimana komunikasi V2V berbasis 5G memengaruhi kestabilan sistem kontrol
+\textit{platooning}, serta bagaimana fungsi-fungsi di dalamnya dapat diintegrasikan agar
+tetap sinkron meskipun jaringan mengalami degradasi performa (latensi dan
+\textit{packet loss})?
+
+\subsection{Tujuan Penelitian}
+
+Mengembangkan platform pengujian (simulasi) yang mampu memvalidasi algoritma
+\textit{Cooperative Adaptive Cruise Control} (CACC) dan protokol komunikasi V2V secara
+presisi, aman, dan terukur \textbf{tanpa adanya risiko kerusakan fisik}.
+
+% ============================================================
+\section{Arsitektur Sistem}
+% ============================================================
+
+\subsection{Desain Arsitektur Client-Server}
+
+Sistem mengadopsi desain \textbf{arsitektur Client-Server} berbasis web yang memisahkan
+logika komputasi (backend) dari lapisan visualisasi (frontend).
+
+\begin{table}[ht]
+\centering
+\caption{Lapisan Arsitektur Sistem}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\textbf{Layer} & \textbf{Deskripsi} \\
+\midrule
+\textbf{Client (Frontend)} &
+  React 18 + Vite + TypeScript. Visualisasi Canvas 2D pergerakan kendaraan
+  real-time, panel konfigurasi parameter, Telemetry HUD. \\[0.5em]
+\textbf{5G Network Emulator} &
+  Emulasi latensi (buffer antrean) dan packet loss (probabilistic drop).
+  Dijalankan di sisi backend sebagai bagian dari loop fisika. \\[0.5em]
+\textbf{Server (Backend)} &
+  Node.js + Express + TypeScript. Physics engine CACC/ACC beroperasi pada
+  20 Hz. Mengelola state kendaraan, emulasi jaringan, dan API Socket.IO. \\[0.5em]
+\textbf{Database \& Session Log} &
+  Penyimpanan riwayat sesi (JSON), telemetri berseri, dan hasil analisis
+  stabilitas yang dapat diekspor. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Komunikasi antara frontend dan backend menggunakan \textbf{WebSocket via Socket.IO},
+memungkinkan transmisi state simulasi dua arah dengan latensi rendah pada frekuensi
+$\approx$20 Hz.
+
+\subsection{Stack Teknologi}
+
+\begin{table}[ht]
+\centering
+\caption{Stack Teknologi Implementasi}
+\begin{tabularx}{\linewidth}{lXX}
+\toprule
+\textbf{Layer} & \textbf{Teknologi} & \textbf{Fungsi} \\
+\midrule
+Frontend & React 18 + Vite + TypeScript & SPA, rendering Canvas 2D, HUD Telemetry \\
+Backend  & Node.js + Express + TypeScript & Physics engine, CACC/ACC loop, REST API \\
+Real-Time Comm. & Socket.IO (WebSocket) & Transmisi state simulasi 20 Hz \\
+Visualisasi & HTML5 Canvas 2D API & Render kendaraan, lajur, RSU \\
+Deployment & PM2 (VPS DigitalOcean) & Process manager produksi \\
+Reverse Proxy & Nginx + Let's Encrypt SSL & HTTPS \& domain routing \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Alur Data Real-Time}
+
+\begin{enumerate}
+  \item Backend menjalankan \textit{physics loop} konstan pada $\approx$20 Hz (setiap 50 ms).
+  \item Setiap \textit{tick}, backend menghitung posisi, kecepatan, dan akselerasi setiap
+        kendaraan berdasarkan model CACC/ACC.
+  \item State lengkap dikirim ke semua klien melalui event Socket.IO (\texttt{sim:state}).
+  \item Frontend menerima data dan merender ulang canvas serta memperbarui panel telemetri.
+  \item Pengguna mengubah parameter simulasi melalui slider dan dikirim balik ke backend via
+        event \texttt{sim:updateParams}.
+\end{enumerate}
+
+% ============================================================
+\section{Model Kendaraan dan Kinematika}
+% ============================================================
+
+\subsection{State Kendaraan}
+
+Setiap kendaraan dimodelkan sebagai objek \texttt{VehicleState}:
+
+\begin{table}[ht]
+\centering
+\caption{Atribut State Kendaraan (\texttt{VehicleState})}
+\begin{tabularx}{\linewidth}{llX}
+\toprule
+\textbf{Atribut} & \textbf{Tipe} & \textbf{Keterangan} \\
+\midrule
+\texttt{x}       & number (m) & Posisi longitudinal di sepanjang jalan (meter) \\
+\texttt{y}       & number (int) & Indeks lajur platoon (0 = Platoon A, 1 = B, dst.) \\
+\texttt{wy}      & number & Posisi lateral kontinu dalam satuan lajur \\
+\texttt{heading} & number (rad) & Sudut heading kendaraan; 0 = lurus ke depan \\
+\texttt{speed}   & number (m/s) & Kecepatan longitudinal \\
+\texttt{accel}   & number (m/s$^{2}$) & Percepatan/deselerasi saat ini \\
+\texttt{brake}   & boolean & Indikator apakah kendaraan sedang mengerem \\
+\texttt{crashed} & boolean & Tanda tabrakan; kendaraan dibekukan jika \texttt{true} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Konstanta Fisika}
+
+\begin{table}[ht]
+\centering
+\caption{Konstanta Fisika Simulasi}
+\begin{tabular}{lll}
+\toprule
+\textbf{Konstanta} & \textbf{Nilai} & \textbf{Keterangan} \\
+\midrule
+$a_{\max}$ & 3.5 m/s$^{2}$ & Batas akselerasi mesin (throttle penuh) \\
+$b_{\max}$ & 6.0 m/s$^{2}$ & Batas deselerasi normal \\
+$b_{\text{emrg}}$ & 9.0 m/s$^{2}$ & Deselerasi darurat saat jarak kritis \\
+$v_{\max}$ & 42.0 m/s ($\approx$150 km/h) & Kecepatan maksimum kendaraan \\
+$w_{\text{lane}}$ & 3.5 m & Lebar lajur jalan nyata \\
+$\Delta t$ & 0.05 s & Interval waktu simulasi (20 Hz) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Pembaruan Posisi Kendaraan (Integrasi Euler)}
+
+Sistem menggunakan metode integrasi \textbf{Euler Forward}:
+
+\begin{formulabox}{Kinematika Longitudinal}
+\begin{align}
+  v(t{+}\Delta t) &= \operatorname{clamp}\!\bigl(v(t) + a_{\text{cmd}} \cdot \Delta t,\; 0,\; v_{\max}\bigr) \label{eq:v_update}\\[4pt]
+  x(t{+}\Delta t) &= x(t) + v(t{+}\Delta t) \cdot \cos(\theta) \cdot \Delta t \label{eq:x_update}
+\end{align}
+di mana $\theta$ adalah sudut \textit{heading} kendaraan dan $\Delta t = 0.05$ s.
+\end{formulabox}
+
+\subsection{Model Kinematika Lateral (Lane Change)}
+
+Saat terjadi pergantian lajur, sistem menggunakan \textbf{trajektori sinusoidal halus}:
+
+\begin{formulabox}{Trajektori Sinusoidal Pergantian Lajur}
+\begin{align}
+  p(t) &= \tfrac{1}{2} - \tfrac{1}{2}\cos\!\!\left(\pi \cdot \frac{t_{\text{elapsed}}}{T_{\text{dur}}}\right) \label{eq:sinusoidal}\\[4pt]
+  y_w(t) &= y_{\text{start}} + (y_{\text{target}} - y_{\text{start}}) \cdot p(t) \label{eq:lane_pos}\\[4pt]
+  \theta(t) &= \arctan\!\!\left(\frac{\Delta y_w \cdot w_{\text{lane}}}{v \cdot \Delta t}\right) \label{eq:heading}
+\end{align}
+di mana $p(t) \in [0,1]$ adalah progress maneuver, $T_{\text{dur}}$ = durasi total maneuver.
+\end{formulabox}
+
+Untuk gerakan lateral normal (proportional steering fallback):
+\begin{equation}
+  \theta_{\text{des}} = \operatorname{clamp}\!\bigl(K_{\text{steer}} \cdot (y_{\text{target}} - y_w),\; -\theta_{\max},\; \theta_{\max}\bigr), \quad K_{\text{steer}} = 1.5,\; \theta_{\max} = 0.12\text{ rad}
+\end{equation}
+
+% ============================================================
+\section{Algoritma Kontrol CACC dan ACC}
+% ============================================================
+
+\subsection{Desired Gap Model (Constant Time Headway Policy)}
+
+Kedua kontroller (CACC dan ACC) menggunakan model \textbf{CTHP} sebagai acuan jarak aman:
+
+\begin{formulabox}{Desired Gap -- Jarak Aman Target}
+\begin{equation}
+  d_{\text{desired}} = s_0 + h \cdot v_f \label{eq:d_desired}
+\end{equation}
+\begin{itemize}[noitemsep]
+  \item $s_0$ = standstill distance (jarak minimum saat berhenti) [m], rentang: 4--20 m
+  \item $h$ = time headway (waktu jeda aman) [s], rentang: 0.5--3.0 s
+  \item $v_f$ = kecepatan kendaraan pengikut (\textit{follower}) [m/s]
+\end{itemize}
+\end{formulabox}
+
+\subsection{Spacing Error dan Kecepatan Relatif}
+
+\begin{formulabox}{Spacing Error (Eror Jarak) dan Kecepatan Relatif}
+\begin{align}
+  d_{\text{actual}} &= x_{\text{pred}} - x_f \label{eq:d_actual}\\[4pt]
+  e &= d_{\text{actual}} - d_{\text{desired}} \label{eq:spacing_err}\\[4pt]
+  v_{\text{rel}} &= v_{\text{pred}} - v_f \label{eq:v_rel}
+\end{align}
+$e > 0$: kendaraan terlalu jauh (boleh akselerasi);\quad $e < 0$: terlalu dekat (harus rem).
+\end{formulabox}
+
+\subsection{Algoritma CACC (Cooperative Adaptive Cruise Control)}
+
+CACC menggabungkan umpan balik lokal dengan \textbf{umpan maju nirkabel (feedforward)}:
+
+\begin{formulabox}{Perintah Akselerasi CACC -- PD + Feedforward}
+\begin{equation}
+  \boxed{a_{\text{CACC}} = K_P \cdot e + K_D \cdot v_{\text{rel}} + \alpha_{\text{ff}} \cdot a_{\text{ff}}}
+  \label{eq:cacc}
+\end{equation}
+\begin{center}
+\begin{tabular}{lll}
+  $K_P = 0.45$ & Gain proporsional & (mengoreksi eror jarak) \\
+  $K_D = 0.35$ & Gain derivatif & (mengoreksi perbedaan kecepatan) \\
+  $\alpha_{\text{ff}} = 0.6$ & Bobot feedforward & (data akselerasi V2V nirkabel) \\
+\end{tabular}
+\end{center}
+Output di-clamp ke batas fisik: $a_{\text{cmd}} = \operatorname{clamp}(a_{\text{CACC}}, -b_{\max}, a_{\max})$
+\end{formulabox}
+
+\subsection{Topologi Komunikasi V2V}
+
+Sumber data $a_{\text{ff}}$ bergantung pada topologi yang dipilih:
+
+\begin{table}[ht]
+\centering
+\caption{Perbandingan Topologi Komunikasi V2V}
+\begin{tabularx}{\linewidth}{lXX}
+\toprule
+\textbf{Topologi} & \textbf{Sumber $a_{\text{ff}}$} & \textbf{Karakteristik} \\
+\midrule
+\textbf{Predecessor Following (PF)} &
+  $a_{\text{predecessor}}$ (mobil langsung di depan) &
+  Informasi berantai; rentan akumulasi delay pada platoon panjang \\[0.5em]
+\textbf{Leader-to-All (L2A)} &
+  $a_{\text{leader}}$ (mobil terdepan) &
+  Semua pengikut bereaksi seketika; latensi tinggi jadi kelemahan \\[0.5em]
+\textbf{Hybrid (Default)} &
+  $a_{\text{leader}}$ untuk feedforward; jarak acuan ke predecessor &
+  Kombinasi terbaik: respons cepat + keamanan jarak lokal \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{ACC Fallback (Radar-only Mode)}
+
+Ketika $\text{PLR} \geq 15\%$, sistem otomatis beralih ke mode ACC konvensional:
+
+\begin{formulabox}{Perintah Akselerasi ACC Fallback}
+\begin{align}
+  h_{\text{safe}} &= \max(2.0,\; h \times 1.6) \label{eq:acc_h}\\[4pt]
+  d_{\text{des,ACC}} &= s_0 + h_{\text{safe}} \cdot v_f \label{eq:acc_d}\\[4pt]
+  a_{\text{ACC}} &= 0.32 \cdot e_{\text{ACC}} + 0.18 \cdot v_{\text{rel}} \cdot 0.4 \label{eq:acc_a}
+\end{align}
+Tanpa data prediktif V2V, headway diperlebar $1.6\times$ (min. 2.0 s) untuk mengakomodasi
+batas \textit{stopping distance} radar. Gain diturunkan agar rem tidak kejut.
+\end{formulabox}
+
+\begin{infobox}{Perbandingan CACC vs ACC Fallback}
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Parameter} & \textbf{CACC} & \textbf{ACC Fallback} \\
+\midrule
+Sumber Informasi & Radar + V2V Nirkabel & Radar Lokal Saja \\
+Gain $K_P$ / $K_D$ & 0.45 / 0.35 & 0.32 / 0.072 \\
+Umpan maju $\alpha_{\text{ff}}$ & 0.6 & 0 \\
+Time Headway & $h$ (konfigurabel) & $\max(2.0,\; 1.6h)$ \\
+Aktivasi & Default & PLR $\geq 15\%$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{infobox}
+
+\subsection{Kontrol Leader (Kendaraan Pemimpin)}
+
+\begin{equation}
+  a_{\text{leader}} = \tau \cdot a_{\max} - \beta \cdot b_{\max}, \qquad
+  v_{\text{leader}} \leftarrow \operatorname{clamp}(v + a_{\text{leader}} \cdot \Delta t,\; 0,\; v_{\max})
+\end{equation}
+di mana $\tau \in [0,1]$ adalah throttle dan $\beta \in [0,1]$ adalah input rem operator.
+
+% ============================================================
+\section{Emulasi Jaringan 5G}
+% ============================================================
+
+\subsection{Arsitektur Emulator Jaringan}
+
+Emulator jaringan 5G menggunakan dua mekanisme utama:
+\begin{enumerate}
+  \item \textbf{Antrean Penundaan (Latency Buffer Queue)}: Paket disimpan dengan stempel
+        waktu pengantaran $t_{\text{deliver}} = t_{\text{now}} + L_{\text{ms}}$.
+  \item \textbf{Pembuangan Probabilistik (Probabilistic Drop)}: Jika $r < \text{PLR}$,
+        di mana $r \sim \mathcal{U}(0,100)$, paket dibuang.
+\end{enumerate}
+
+\begin{formulabox}{Model Emulasi Paket V2V}
+\begin{align}
+  t_{\text{deliver}} &= t_{\text{now}} + L_{\text{ms}} \label{eq:latency}\\[4pt]
+  \text{packet lost} &= \begin{cases}
+    \text{true}  & \text{jika } r < \text{PLR},\quad r \sim \mathcal{U}(0,100) \\
+    \text{false} & \text{lainnya}
+  \end{cases} \label{eq:plr}
+\end{align}
+\end{formulabox}
+
+\subsection{Parameter Jaringan yang Dapat Dikonfigurasi}
+
+\begin{table}[ht]
+\centering
+\caption{Parameter Jaringan Simulasi}
+\begin{tabularx}{\linewidth}{lllX}
+\toprule
+\textbf{Parameter} & \textbf{Simbol} & \textbf{Rentang} & \textbf{Keterangan} \\
+\midrule
+One-Way Latency & $L$ & 5--500 ms & Keterlambatan transmisi paket satu arah \\
+Packet Loss Rate & PLR & 0--100\% & Persentase paket yang hilang di jaringan \\
+Channel Bandwidth & $B$ & 5 MHz--5 GHz & Lebar pita saluran 5G NR \\
+V2V Topology & --- & PF, L2A, Hybrid & Pola komunikasi antar kendaraan \\
+Dynamic Path Loss & --- & On/Off & Model 3GPP berbasis jarak RSU \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Model Dynamic Path Loss (Standar 3GPP)}
+
+Ketika \textit{Dynamic Path Loss} aktif, PLR dihitung berdasarkan jarak ke RSU terdekat:
+
+\begin{formulabox}{Model Path Loss 3GPP (Terinspirasi)}
+\begin{equation}
+  \text{PLR}_{\text{dyn}}(d) = \begin{cases}
+    0\%   & d \leq 50\text{ m (Zona Dekat)} \\
+    80\% \cdot \bigl(1 - e^{-k(d-50)}\bigr) & 50 < d < 300\text{ m (Zona Menengah)} \\
+    80\%  & d \geq 300\text{ m (Zona Jauh)}
+  \end{cases}
+  \label{eq:path_loss}
+\end{equation}
+RSU ditempatkan berkala setiap 500 m, jangkauan efektif 300 m.
+\end{formulabox}
+
+\subsection{Utilisasi Saluran dan E2E Delay}
+
+\begin{formulabox}{Utilisasi Kanal dan End-to-End Delay}
+\begin{align}
+  U &= \min\!\left(100,\;\frac{N_v \times 0.05}{B_{\text{MHz}}} \times 100\right) \label{eq:util}\\[6pt]
+  T_{\text{E2E}} &= L_{\text{ms}} \times \max(1,\; N_{\text{platoon}} - 1) \label{eq:e2e}
+\end{align}
+$U$ = utilisasi kanal (\%), $N_v$ = jumlah kendaraan, $B_{\text{MHz}}$ = bandwidth dalam MHz.\\
+$T_{\text{E2E}}$ = total delay multi-hop dari Leader ke Follower terakhir.
+\end{formulabox}
+
+\subsection{Deteksi Tabrakan}
+
+\begin{formulabox}{Deteksi Tabrakan (Bounding Box)}
+\begin{equation}
+  \text{collision} = |x_A - x_B| < 4.5\text{ m} \;\wedge\; |y_A - y_B| < 2.0\text{ m}
+  \label{eq:collision}
+\end{equation}
+Saat tabrakan terdeteksi: kendaraan dibekukan, simulasi dihentikan otomatis,
+sesi disimpan untuk analisis.
+\end{formulabox}
+
+% ============================================================
+\section{Metrik Evaluasi Kinerja (KPI)}
+% ============================================================
+
+\subsection{String Stability Index (SSI)}
+
+\begin{formulabox}{String Stability Index (SSI)}
+\begin{equation}
+  \boxed{SSI = \max\!\left(0,\; 1 - \frac{|e_{\text{total}}|}{20}\right)}
+  \label{eq:ssi}
+\end{equation}
+\begin{itemize}[noitemsep]
+  \item $SSI = 1.0$: Platoon sempurna stabil, jarak aman dijaga presisi.
+  \item $0.8 \leq SSI < 1.0$: Sedikit ketidakstabilan; masih dapat diterima.
+  \item $SSI < 0.8$: Ketidakstabilan serius (\textit{string instability}); risiko tabrakan tinggi.
+  \item $SSI = 0$: Eror jarak mencapai atau melebihi 20 meter.
+\end{itemize}
+\end{formulabox}
+
+Jika pengereman di Leader menghasilkan eror jarak yang semakin besar saat merambat ke
+belakang, SSI akan menurun. Kontrol CACC yang efektif mempertahankan SSI mendekati 1.0.
+
+\subsection{Ringkasan KPI Simulasi}
+
+\begin{table}[ht]
+\centering
+\caption{Key Performance Indicators (KPI) Simulasi}
+\begin{tabularx}{\linewidth}{lXll}
+\toprule
+\textbf{KPI} & \textbf{Definisi} & \textbf{Satuan} & \textbf{Ideal} \\
+\midrule
+SSI & Indeks kestabilan formasi barisan & -- & $\to 1.0$ \\
+Avg. Spacing Error & Rata-rata eror jarak antar kendaraan & m & $\to 0$ \\
+Max Spacing Error & Eror jarak maksimum yang pernah terjadi & m & $\to 0$ \\
+E2E Delay & Keterlambatan total Leader ke Follower terakhir & ms & Rendah \\
+Avg. Latency & Rata-rata latensi jaringan per tick & ms & $<20$ ms \\
+Avg. PLR & Rata-rata paket yang hilang & \% & $<5\%$ \\
+ACC Fallback \% & Waktu simulasi dalam mode ACC & \% & $\to 0\%$ \\
+Avg. Update Hz & Frekuensi rata-rata pembaruan simulasi & Hz & $\approx 20$ \\
+Collision Count & Jumlah tabrakan yang terjadi & kejadian & 0 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ============================================================
+\section{Skenario Eksperimen}
+% ============================================================
+
+Platform mendukung tiga jenis gangguan yang dapat dipicu secara interaktif:
+
+\begin{table}[ht]
+\centering
+\caption{Skenario Gangguan Interaktif}
+\begin{tabularx}{\linewidth}{llX}
+\toprule
+\textbf{Hotkey} & \textbf{Nama Skenario} & \textbf{Deskripsi} \\
+\midrule
+\texttt{[1]} & Latency Spike & Lonjakan latensi tiba-tiba ke jaringan V2V \\
+\texttt{[2]} & Packet Drop & Kehilangan paket masif secara seketika \\
+\texttt{[3]} & Human Braking & Kendaraan Leader melakukan pengereman mendadak \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Skenario 1: CACC dalam Kondisi Ideal (5G Sempurna)}
+
+\textbf{Konfigurasi}: $L = 5$ ms, PLR = 0\%, $B = 100$ MHz, Topology = Hybrid.
+
+\textbf{Hasil yang Diharapkan}: Platoon merespons pengereman secara simultan dan
+terkoordinasi. SSI tetap mendekati 1.0. Barisan melambat rapi tanpa eror jarak signifikan.
+
+\subsection{Skenario 2: Degradasi Jaringan Dinamis (RSU Path Loss)}
+
+\textbf{Konfigurasi}: Aktifkan \textit{Dynamic Path Loss (3GPP)}.
+
+\textbf{Observasi}: Saat kendaraan menjauhi tiang RSU ($d > 250$ m), PLR melonjak.
+Indikator V2V berubah \textit{Connected} $\to$ \textit{Degraded} $\to$
+\textit{Disconnected}. ACC Fallback aktif dan jarak aman melebar.
+
+\textbf{Pemulihan}: Mendekati RSU berikutnya, CACC pulih otomatis dan jarak kembali normal.
+
+\subsection{Skenario 3: Kegagalan Formasi (String Instability)}
+
+\textbf{Konfigurasi}: $L = 20$ ms, PLR = 14\%, Topology = PF.
+
+\textbf{Hasil}: Efek domino amplifikasi eror berujung tabrakan di kendaraan belakang.
+Layar berkedip merah dan \textit{Crash Modal} ditampilkan. SSI turun mendekati 0.
+
+% ============================================================
+\section{Implementasi Teknis}
+% ============================================================
+
+\subsection{Struktur Proyek}
+
+\begin{lstlisting}[style=codeStyle, caption=Struktur Folder Proyek]
+TA/
+  backend/src/sim/
+    cacc.ts           -- Algoritma CACC & ACC Fallback
+    networkEmulator.ts -- 5G latency queue & packet drop
+    physics.ts        -- Kinematika & pembaruan posisi kendaraan
+    sessionManager.ts -- Log telemetri & penyimpanan histori
+    types.ts          -- Tipe data TypeScript (state, params)
+    validation.ts     -- Sanitasi & validasi input parameter
+  backend/src/
+    server.ts         -- Entry point: Socket.IO, REST API, loop fisika
+  frontend/src/
+    components/       -- ControlPanel, SimulationCanvas, TelemetryPanel
+    pages/            -- SimulationPage, AnalysisPage
+    hooks/            -- useSimulationSocket (Socket.IO management)
+  ecosystem.config.js  -- Konfigurasi PM2 (produksi VPS)
+  run.bat             -- Launcher lokal otomatis (Windows)
+\end{lstlisting}
+
+\subsection{Implementasi Inti CACC}
+
+\begin{lstlisting}[style=codeStyle, caption=Inti Algoritma CACC (cacc.ts)]
+const KP = 0.45   // spacing error proportional gain
+const KD = 0.35   // relative speed derivative gain
+
+function computeCaccAcceleration(input):
+  desiredGap   = input.standstillDistance
+               + input.timeHeadway * input.followerSpeed
+  actualGap    = input.predecessorX - input.followerX
+  spacingError = actualGap - desiredGap
+  relativeSpeed = input.predecessorSpeed - input.followerSpeed
+
+  // Topology-based feedforward
+  switch (input.topology):
+    case 'PF':     feedforward = input.predecessorAccel
+    case 'L2A':    feedforward = input.leaderAccel
+    case 'Hybrid': feedforward = input.leaderAccel
+
+  accelCmd = KP * spacingError
+           + KD * relativeSpeed
+           + feedforward * 0.6
+
+  return { accelCmd, spacingError }
+\end{lstlisting}
+
+\subsection{Implementasi Emulator Jaringan}
+
+\begin{lstlisting}[style=codeStyle, caption=Emulator Jaringan 5G (networkEmulator.ts)]
+class NetworkEmulator:
+  queue = []          // antrean paket dengan stempel waktu
+  lastGoodPacket = null
+
+  push(packet, latencyMs, packetLossPercent):
+    isLost = (Math.random() * 100) < packetLossPercent
+    if isLost: return     // paket dibuang (drop)
+    queue.push({ deliverAt: now() + latencyMs, packet })
+
+  receive():
+    idx = queue.findIndex(item => item.deliverAt <= now())
+    if idx < 0: return lastGoodPacket  // gunakan data lama
+    item = queue.splice(idx, 1)
+    lastGoodPacket = item.packet
+    return item.packet
+\end{lstlisting}
+
+\subsection{Infrastruktur Deployment}
+
+\begin{table}[ht]
+\centering
+\caption{Konfigurasi Infrastruktur Deployment}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\textbf{Komponen} & \textbf{Konfigurasi} \\
+\midrule
+VPS Provider & DigitalOcean (188.166.178.227) \\
+OS & Ubuntu 22.04 LTS \\
+Process Manager & PM2 (\texttt{v2v-platooning-simulation}) \\
+Reverse Proxy & Nginx dengan SSL/TLS (Let's Encrypt) \\
+Domain Publik & \texttt{https://v2v-platooning-simulator.cloud} \\
+Port Backend & 4000 (internal), 443 HTTPS (publik via Nginx) \\
+Build Pipeline & \texttt{npm run build}: TypeScript $\to$ JavaScript dist \\
+Deploy Method & SFTP upload \texttt{frontend/dist} + \texttt{backend/dist}, restart PM2 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ============================================================
+\section{Rekap Seluruh Formula Matematis}
+% ============================================================
+
+\begin{table}[ht]
+\centering
+\caption{Daftar Lengkap Formula Matematis Sistem}
+\begin{tabularx}{\linewidth}{lXl}
+\toprule
+\textbf{Nama} & \textbf{Formula} & \textbf{Ref.} \\
+\midrule
+Kecepatan baru & $v' = \operatorname{clamp}(v + a\Delta t,\; 0,\; v_{\max})$ & \ref{eq:v_update} \\[0.3em]
+Posisi baru & $x' = x + v'\cos\theta\,\Delta t$ & \ref{eq:x_update} \\[0.3em]
+Lane trajectory & $y_w(t) = y_s + (y_t - y_s)\!\left(\tfrac{1}{2}-\tfrac{1}{2}\cos\pi p\right)$ & \ref{eq:lane_pos} \\[0.3em]
+Desired gap & $d_{\text{des}} = s_0 + h\, v_f$ & \ref{eq:d_desired} \\[0.3em]
+Spacing error & $e = (x_p - x_f) - d_{\text{des}}$ & \ref{eq:spacing_err} \\[0.3em]
+Rel. speed & $v_{\text{rel}} = v_p - v_f$ & \ref{eq:v_rel} \\[0.3em]
+CACC accel & $a_{\text{CACC}} = 0.45\,e + 0.35\,v_{\text{rel}} + 0.6\,a_{\text{ff}}$ & \ref{eq:cacc} \\[0.3em]
+ACC headway & $h_{\text{safe}} = \max(2.0,\; 1.6\,h)$ & \ref{eq:acc_h} \\[0.3em]
+ACC accel & $a_{\text{ACC}} = 0.32\,e + 0.072\,v_{\text{rel}}$ & \ref{eq:acc_a} \\[0.3em]
+Latency model & $t_{\text{deliver}} = t_{\text{now}} + L_{\text{ms}}$ & \ref{eq:latency} \\[0.3em]
+E2E delay & $T_{\text{E2E}} = L_{\text{ms}} \times (N-1)$ & \ref{eq:e2e} \\[0.3em]
+Utilisasi & $U = \min\!\left(100,\frac{N_v \times 0.05}{B_{\text{MHz}}}\times 100\right)$ & \ref{eq:util} \\[0.3em]
+SSI & $SSI = \max\!\left(0,\; 1 - |e|/20\right)$ & \ref{eq:ssi} \\[0.3em]
+Collision detect & $|x_A{-}x_B| < 4.5\,\wedge\,|y_A{-}y_B| < 2.0$ (meter) & \ref{eq:collision} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ============================================================
+\section{Kesimpulan}
+% ============================================================
+
+Penelitian ini berhasil merancang dan mengimplementasikan \textbf{Platform Simulasi 2D
+Interaktif Client-Server} yang terintegrasi dengan emulator jaringan 5G URLLC dan
+algoritma kontrol CACC. Temuan utama:
+
+\begin{enumerate}
+  \item \textbf{Validasi CACC}: Algoritma PD + Feedforward mempertahankan formasi dengan
+        SSI mendekati 1.0 pada kondisi ideal ($L < 20$ ms, PLR $< 5\%$).
+
+  \item \textbf{Pengaruh Jaringan}: Peningkatan latensi dan packet loss langsung menurunkan
+        SSI. Pada PLR $\geq 15\%$, sistem otomatis beralih ke ACC dengan headway lebih lebar.
+
+  \item \textbf{Efektivitas Dynamic Path Loss}: Model 3GPP berhasil merepresentasikan kondisi
+        jaringan jalan raya nyata yang berfluktuasi di antara dua tiang RSU.
+
+  \item \textbf{Superioritas Hybrid Topology}: Topologi Hybrid memberikan kestabilan terbaik
+        dibandingkan PF maupun L2A pada skenario gangguan jaringan.
+
+  \item \textbf{Platform Aman}: Simulator memungkinkan pengujian skenario ekstrem tanpa
+        risiko fisik dan dengan biaya minimal dibandingkan uji coba nyata.
+\end{enumerate}
+
+% ============================================================
+\section*{Daftar Pustaka}
+\addcontentsline{toc}{section}{Daftar Pustaka}
+% ============================================================
+
+\begin{enumerate}[label={[\arabic*]}]
+  \item Y.~Zhang, E.~Li, X.~Zhang, and Y.~Zhao, ``A Survey on Vehicular Platooning
+        Communication, Control, and Applications,'' \textit{IEEE Trans. Intell. Transp.
+        Syst.}, vol.~22, no.~6, pp.~3311--3326, 2021.
+
+  \item J.~Wang and H.~Liang, ``Performance Analysis of V2V Communication for Vehicle
+        Platooning Applications,'' \textit{IEEE Access}, vol.~8, pp.~44872--44884, 2020.
+
+  \item 3GPP TS 38.211, ``NR; Physical Channels and Modulation (Release 16),''
+        3rd Generation Partnership Project, 2020.
+
+  \item S.~Tsugawa, S.~Jeschke, and S.~E.~Shladover, ``A Review of Truck Platooning
+        Projects for Energy Savings,'' \textit{IEEE Trans. Intell. Veh.}, vol.~1, no.~1,
+        pp.~68--77, 2016.
+
+  \item V.~Milanés and S.~E.~Shladover, ``Modeling Cooperative and Autonomous Adaptive
+        Cruise Control Dynamic Responses Using Experimental Data,''
+        \textit{Transp. Res. Part C: Emerg. Technol.}, vol.~48, pp.~285--300, 2014.
+\end{enumerate}
+
+\vfill
+\begin{center}
+  \small\color{gray}\rule{0.5\linewidth}{0.4pt}\\[0.3em]
+  Rangkuman Tugas Akhir -- Simulator Platooning V2V Berbasis 5G\\
+  \texttt{https://v2v-platooning-simulator.cloud} $\cdot$ Telkom University $\cdot$ 2026
+\end{center}
+
+\end{document}
