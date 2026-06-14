@@ -32,12 +32,17 @@ import type {
 
 
 const ACC_FALLBACK_LOSS_THRESHOLD = 15
-/** Distance (metres) at which two vehicles are considered to have collided. */
-const CRASH_DISTANCE_M = 5.0
 /** RSU spacing along the road (metres) — mirrors frontend constant. */
 const RSU_SPACING_M = 500
 /** RSU communication range (metres) — mirrors frontend constant. */
 const RSU_RANGE_M = 300
+/**
+ * Visual length of a vehicle as rendered on the canvas (metres).
+ * Derived from frontend constants: VEHICLE_WIDTH (62 px) ÷ PX_PER_METER (4) = 15.5 m.
+ * Two vehicles are considered to visually touch when their centre-to-centre
+ * longitudinal distance drops to or below this value.
+ */
+const VISUAL_VEHICLE_LENGTH_M = 15.5  // 62 px / 4 px-per-metre = 15.5 m
 
 
 // â”€â”€ Transfer FSM constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -475,14 +480,15 @@ function detectAndApplyCollisions(): { between: [string, string]; gapMeters: num
       const dx = Math.abs(a.x - b.x)
       const dy = Math.abs(a.wy - b.wy) * LANE_WIDTH_M
 
-      // Contact-based collision: triggered when bumper-to-bumper gap ≤ 0.
-      // Center-to-center distance ≤ VEHICLE_LENGTH_M means front bumper of
-      // the rear vehicle has touched the rear bumper of the front vehicle.
-      // Lateral tolerance: vehicles must be in the same lane (dy < 1.9m).
-      const longitudinalContact = dx <= VEHICLE_LENGTH_M
-      const lateralContact = dy < 1.9
+      // Visual-contact collision: triggered when vehicle bodies appear to touch
+      // on the canvas. VISUAL_VEHICLE_LENGTH_M = canvas VEHICLE_WIDTH(62px) /
+      // PX_PER_METER(4) = 15.5 m. When dx <= 15.5 m the front of one car
+      // reaches the rear of the other — exactly what the user sees.
+      // Lateral tolerance: same-lane check (dy < half a lane width = 1.75 m).
+      const visualTouch = dx <= VISUAL_VEHICLE_LENGTH_M
+      const sameLane = dy < LANE_WIDTH_M * 0.5  // within half a lane of each other
 
-      if (longitudinalContact && lateralContact) {
+      if (visualTouch && sameLane) {
         // Freeze both vehicles instantly
         platoons = platoons.map((platoon) =>
           platoon.map((v) =>
@@ -498,11 +504,11 @@ function detectAndApplyCollisions(): { between: [string, string]; gapMeters: num
         collisionCooldownUntil = Date.now() + 5000
         session.recordCollision()
 
-        // Actual bumper-to-bumper gap (negative = overlap)
-        const bumperGap = Number(Math.max(0, dx - VEHICLE_LENGTH_M).toFixed(2))
+        // Visual gap = how much the bodies overlap (0 = just touching)
+        const visualGap = Number(Math.max(0, dx - VISUAL_VEHICLE_LENGTH_M).toFixed(2))
         return {
           between: [a.id, b.id],
-          gapMeters: bumperGap,
+          gapMeters: visualGap,
         }
       }
     }
