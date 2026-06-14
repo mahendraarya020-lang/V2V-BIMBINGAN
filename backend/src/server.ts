@@ -453,9 +453,12 @@ function getState(): SimulationState {
 // ──────────────────────────────── Collision detection ──────────────────────────────────────────────
 
 /**
- * Check ALL vehicle pairs with bounding box overlap check.
- * Converts `wy` (lane units) to metres using LANE_WIDTH_M before comparison.
- * When a collision is found, both vehicles are instantly crashed and frozen.
+ * Check ALL vehicle pairs for physical contact (gap ≤ 0).
+ * A collision is triggered when the front bumper of one vehicle touches
+ * the rear bumper of another — i.e. center-to-center distance ≤ VEHICLE_LENGTH_M
+ * in the longitudinal axis AND lateral separation < lane width.
+ * When a collision is found, BOTH vehicles are instantly crashed & frozen,
+ * and the simulation is flagged to stop immediately.
  * Returns the collision event payload (or null if no new collision).
  */
 function detectAndApplyCollisions(): { between: [string, string]; gapMeters: number } | null {
@@ -472,11 +475,15 @@ function detectAndApplyCollisions(): { between: [string, string]; gapMeters: num
       const dx = Math.abs(a.x - b.x)
       const dy = Math.abs(a.wy - b.wy) * LANE_WIDTH_M
 
-      // Bounding box collision check: 
-      // vehicles are 4.5m long and ~1.8m wide. We consider overlap if:
-      // longitudinal gap is less than 4.5m and lateral gap is less than 2.0m.
-      if (dx < VEHICLE_LENGTH_M && dy < 2.0) {
-        // Crash both vehicles: freeze motion, set crashed flag
+      // Contact-based collision: triggered when bumper-to-bumper gap ≤ 0.
+      // Center-to-center distance ≤ VEHICLE_LENGTH_M means front bumper of
+      // the rear vehicle has touched the rear bumper of the front vehicle.
+      // Lateral tolerance: vehicles must be in the same lane (dy < 1.9m).
+      const longitudinalContact = dx <= VEHICLE_LENGTH_M
+      const lateralContact = dy < 1.9
+
+      if (longitudinalContact && lateralContact) {
+        // Freeze both vehicles instantly
         platoons = platoons.map((platoon) =>
           platoon.map((v) =>
             v.id === a.id || v.id === b.id
@@ -485,13 +492,17 @@ function detectAndApplyCollisions(): { between: [string, string]; gapMeters: num
           ),
         )
 
-        collisionCooldownUntil = Date.now() + 2000
+        // Stop simulation immediately
+        running = false
+
+        collisionCooldownUntil = Date.now() + 5000
         session.recordCollision()
 
-        const dist = Math.sqrt(dx * dx + dy * dy)
+        // Actual bumper-to-bumper gap (negative = overlap)
+        const bumperGap = Number(Math.max(0, dx - VEHICLE_LENGTH_M).toFixed(2))
         return {
           between: [a.id, b.id],
-          gapMeters: Number(dist.toFixed(2)),
+          gapMeters: bumperGap,
         }
       }
     }

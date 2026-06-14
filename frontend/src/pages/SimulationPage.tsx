@@ -34,6 +34,7 @@ export function SimulationPage() {
   const [showCrashModal, setShowCrashModal] = useState(false)
   const [crashInfo, setCrashInfo] = useState<{ between: string[]; gapMeters: number } | null>(null)
   const [flashScreen, setFlashScreen] = useState(false)
+  const [crashShake, setCrashShake] = useState(false)
 
 
   useEffect(() => {
@@ -106,16 +107,29 @@ export function SimulationPage() {
   useEffect(() => {
     if (!lastCollision) return
     const [first, second] = lastCollision.between
-    // Screen flash
-    setFlashScreen(true)
-    setTimeout(() => setFlashScreen(false), 900)
-    // Show crash modal
-    setCrashInfo(lastCollision)
-    setTimeout(() => setShowCrashModal(true), 350)
-    // Also push toast
     const labelA = getVehicleLabelById(first, state?.vehicles ?? [])
     const labelB = getVehicleLabelById(second, state?.vehicles ?? [])
-    pushToast({ title: 'TABRAKAN!', message: `Vehicle ${labelA} ↔ Vehicle ${labelB} (jarak ${lastCollision.gapMeters}m)`, kind: 'error' })
+
+    // Triple rapid flash + screen shake for dramatic effect
+    setFlashScreen(true)
+    setCrashShake(true)
+    setTimeout(() => setFlashScreen(false), 200)
+    setTimeout(() => setFlashScreen(true), 300)
+    setTimeout(() => setFlashScreen(false), 500)
+    setTimeout(() => setFlashScreen(true), 600)
+    setTimeout(() => setFlashScreen(false), 900)
+    setTimeout(() => setCrashShake(false), 800)
+
+    // Store crash info and show modal with slight delay for effect
+    setCrashInfo(lastCollision)
+    setTimeout(() => setShowCrashModal(true), 500)
+
+    // Push error toast
+    pushToast({
+      title: '💥 TABRAKAN! Simulasi Dihentikan',
+      message: `Kendaraan ${labelA} dan ${labelB} bersentuhan! Gap: ${lastCollision.gapMeters}m`,
+      kind: 'error'
+    })
   }, [lastCollision])
 
   useEffect(() => {
@@ -468,8 +482,9 @@ export function SimulationPage() {
 
       <Toast toasts={toasts} onDismiss={dismissToast} />
 
-      {/* ── Screen Flash on collision ── */}
+      {/* ── Screen Flash + Shake on collision ── */}
       {flashScreen && <div className="crash-flash" />}
+      {crashShake && <style>{`body { animation: crash-shake 0.08s ease-in-out 8 alternate; } @keyframes crash-shake { 0% { transform: translate(-4px,-3px) rotate(-0.5deg); } 100% { transform: translate(4px,3px) rotate(0.5deg); } }`}</style>}
 
       {/* ── CRASH MODAL ── */}
       {showCrashModal && crashInfo && (
@@ -477,35 +492,51 @@ export function SimulationPage() {
           className="crash-overlay"
           onClick={(e) => { if (e.target === e.currentTarget) setShowCrashModal(false) }}
         >
-          <div className="crash-modal">
-            <div className="crash-icon">💥</div>
-            <div className="crash-title">SIMULASI GAGAL</div>
+          <div className="crash-modal" style={{ animation: 'crash-modal-in 0.4s cubic-bezier(0.175,0.885,0.32,1.275) both' }}>
+            {/* Animated crash icon */}
+            <div className="crash-icon" style={{ fontSize: '4rem', animation: 'crash-bounce 0.5s ease-out 0.3s both' }}>💥</div>
+
+            <div className="crash-title" style={{ letterSpacing: '0.15em', color: '#f87171' }}>TABRAKAN TERDETEKSI</div>
+
             <div className="crash-subtitle">
-              Platoon mengalami tabrakan! Jarak antar kendaraan melampaui batas aman.<br />
-              Simulasi dihentikan secara otomatis.
+              Kendaraan bersentuhan — kontak fisik terdeteksi!<br />
+              <strong style={{ color: '#fbbf24' }}>Simulasi dihentikan secara otomatis.</strong>
             </div>
-            <div className="crash-vehicles">
-              <span>Vehicle {getVehicleLabelById(crashInfo.between[0], state?.vehicles ?? [])}</span>
-              <span style={{ color: '#71717a' }}>↔</span>
-              <span>Vehicle {getVehicleLabelById(crashInfo.between[1], state?.vehicles ?? [])}</span>
-              <span style={{ color: '#71717a', marginLeft: '0.5rem' }}>|</span>
-              <span>Jarak: {crashInfo.gapMeters}m</span>
+
+            {/* Vehicle pair display */}
+            <div className="crash-vehicles" style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '10px', padding: '0.75rem 1.25rem', margin: '0.5rem 0', gap: '0.75rem' }}>
+              <span style={{ fontSize: '1.1rem', fontWeight: 700 }}>🚗 {getVehicleLabelById(crashInfo.between[0], state?.vehicles ?? [])}</span>
+              <span style={{ color: '#f87171', fontWeight: 700, fontSize: '1.3rem' }}>✕</span>
+              <span style={{ fontSize: '1.1rem', fontWeight: 700 }}>🚗 {getVehicleLabelById(crashInfo.between[1], state?.vehicles ?? [])}</span>
+              <span style={{ color: '#71717a', margin: '0 0.25rem' }}>|</span>
+              <span style={{ color: crashInfo.gapMeters === 0 ? '#f87171' : '#fbbf24', fontWeight: 600 }}>
+                {crashInfo.gapMeters === 0 ? '⚠ Kontak langsung (0.00 m)' : `Gap: ${crashInfo.gapMeters} m`}
+              </span>
             </div>
-            <div className="crash-actions">
+
+            {/* Cause info */}
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted, #71717a)', marginBottom: '0.25rem' }}>
+              Penyebab: jarak antar kendaraan melebihi batas aman CACC · Simulasi otomatis dihentikan
+            </div>
+
+            <div className="crash-actions" style={{ marginTop: '1.25rem', gap: '0.75rem' }}>
               <button
+                id="crash-btn-restart"
                 className="ck-btn ck-btn-ghost"
-                style={{ minHeight: '42px', fontSize: '0.85rem' }}
+                style={{ minHeight: '44px', fontSize: '0.9rem', flex: 1 }}
                 onClick={() => {
                   setShowCrashModal(false)
+                  setCrashInfo(null)
                   actions.reset()
                 }}
                 type="button"
               >
-                ↺ Restart
+                ↺ Reset Simulasi
               </button>
               <button
+                id="crash-btn-analysis"
                 className="ck-btn ck-btn-primary"
-                style={{ minHeight: '42px', fontSize: '0.85rem' }}
+                style={{ minHeight: '44px', fontSize: '0.9rem', flex: 1, background: 'linear-gradient(135deg,#ef4444,#dc2626)', boxShadow: '0 0 20px rgba(239,68,68,0.4)' }}
                 onClick={() => {
                   setShowCrashModal(false)
                   setTimeout(() => setShowAnalysis(true), 200)
@@ -516,6 +547,19 @@ export function SimulationPage() {
               </button>
             </div>
           </div>
+
+          {/* Keyframe styles */}
+          <style>{`
+            @keyframes crash-modal-in {
+              from { opacity: 0; transform: scale(0.7) translateY(30px); }
+              to   { opacity: 1; transform: scale(1) translateY(0); }
+            }
+            @keyframes crash-bounce {
+              0%   { transform: scale(0.5) rotate(-15deg); opacity: 0; }
+              60%  { transform: scale(1.3) rotate(5deg); opacity: 1; }
+              100% { transform: scale(1) rotate(0deg); }
+            }
+          `}</style>
         </div>
       )}
     </main>
