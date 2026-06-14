@@ -10,6 +10,7 @@ import {
   hzToMhz,
   mhzToHz,
 } from '../utils/units'
+import { getVehicleLabelById } from '../utils/labels'
 
 type Props = {
   params: SimulationParams
@@ -238,7 +239,7 @@ export function ControlPanel({
                   {vehicleIds.map((id) => {
                     const lane = vehicleLaneMap.get(id) ?? 0
                     const platoon = String.fromCharCode(65 + lane)
-                    return <option key={`a-${id}`} value={id}>[{platoon}] {id.replace('b_', '').toUpperCase()}</option>
+                    return <option key={`a-${id}`} value={id}>[{platoon}] Vehicle {getVehicleLabelById(id, vehicles)}</option>
                   })}
                 </select>
               </div>
@@ -248,7 +249,7 @@ export function ControlPanel({
                   {vehicleIds.map((id) => {
                     const lane = vehicleLaneMap.get(id) ?? 0
                     const platoon = String.fromCharCode(65 + lane)
-                    return <option key={`b-${id}`} value={id}>[{platoon}] {id.replace('b_', '').toUpperCase()}</option>
+                    return <option key={`b-${id}`} value={id}>[{platoon}] Vehicle {getVehicleLabelById(id, vehicles)}</option>
                   })}
                 </select>
               </div>
@@ -274,7 +275,7 @@ export function ControlPanel({
                   {vehicleIds.map((id) => {
                     const lane = vehicleLaneMap.get(id) ?? 0
                     const platoon = String.fromCharCode(65 + lane)
-                    return <option key={`switch-${id}`} value={id}>[{platoon}] {id.replace('b_', '').toUpperCase()}</option>
+                    return <option key={`switch-${id}`} value={id}>[{platoon}] Vehicle {getVehicleLabelById(id, vehicles)}</option>
                   })}
                 </select>
               </div>

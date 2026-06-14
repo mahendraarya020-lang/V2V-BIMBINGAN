@@ -1068,7 +1068,7 @@ export function SimulationCanvas({
         for (const pg of [...platoonGroups].reverse()) {
           const color = palette[pg.lane % palette.length]
           pg.vehicles.forEach((vehicle, index) => {
-            const label = index === 0 ? `L${String.fromCharCode(65 + pg.lane)}` : `F${index}`
+            const label = String.fromCharCode(65 + (index % 26))
             drawVehicle(vehicle, index === 0, color, label)
           })
         }

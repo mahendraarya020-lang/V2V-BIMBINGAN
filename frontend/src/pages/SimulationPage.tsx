@@ -12,6 +12,7 @@ import { readDefaultParamsFromStorage } from '../utils/units'
 import { AnalysisPage } from './AnalysisPage'
 import { SunIcon, MoonIcon, TerminalIcon } from '../components/Icons'
 import logoImg from '../assets/logo.png'
+import { getVehicleLabelById } from '../utils/labels'
 
 export function SimulationPage() {
   const navigate = useNavigate()
@@ -87,14 +88,17 @@ export function SimulationPage() {
     if (swapTimerRef.current) clearTimeout(swapTimerRef.current)
     setPendingSwap({ idA, idB, triggeredAt: Date.now() })
     swapTimerRef.current = setTimeout(() => setPendingSwap(null), 1600)
-    pushToast({ title: 'Transfer initiated', message: `${idA.toUpperCase()} to ${idB.toUpperCase()} platoon.`, kind: 'info' })
+    const labelA = getVehicleLabelById(idA, state?.vehicles ?? [])
+    const labelB = getVehicleLabelById(idB, state?.vehicles ?? [])
+    pushToast({ title: 'Transfer initiated', message: `Vehicle ${labelA} to Platoon ${labelB} transfer.`, kind: 'info' })
   }
 
   function handleSwitchLane(vehicleId: string, targetLane: number) {
     actions.switchLane(vehicleId, targetLane)
+    const label = getVehicleLabelById(vehicleId, state?.vehicles ?? [])
     pushToast({
       title: 'Lane Change Initiated',
-      message: `Moving ${vehicleId.toUpperCase()} to Lane ${String.fromCharCode(65 + targetLane)}.`,
+      message: `Moving Vehicle ${label} to Lane ${String.fromCharCode(65 + targetLane)}.`,
       kind: 'info',
     })
   }
@@ -109,7 +113,9 @@ export function SimulationPage() {
     setCrashInfo(lastCollision)
     setTimeout(() => setShowCrashModal(true), 350)
     // Also push toast
-    pushToast({ title: 'TABRAKAN!', message: `${first} ↔ ${second} (jarak ${lastCollision.gapMeters}m)`, kind: 'error' })
+    const labelA = getVehicleLabelById(first, state?.vehicles ?? [])
+    const labelB = getVehicleLabelById(second, state?.vehicles ?? [])
+    pushToast({ title: 'TABRAKAN!', message: `Vehicle ${labelA} ↔ Vehicle ${labelB} (jarak ${lastCollision.gapMeters}m)`, kind: 'error' })
   }, [lastCollision])
 
   useEffect(() => {
@@ -119,9 +125,10 @@ export function SimulationPage() {
 
   useEffect(() => {
     if (!lastCooperativeInit) return
+    const label = getVehicleLabelById(lastCooperativeInit.vehicleId, state?.vehicles ?? [])
     pushToast({
       title: '5G V2X Cooperative Gap',
-      message: `Gap creation initiated for vehicle ${lastCooperativeInit.vehicleId.toUpperCase()} to Platoon ${String.fromCharCode(65 + lastCooperativeInit.targetLane)}`,
+      message: `Gap creation initiated for vehicle ${label} to Platoon ${String.fromCharCode(65 + lastCooperativeInit.targetLane)}`,
       kind: 'info'
     })
   }, [lastCooperativeInit])
@@ -478,9 +485,9 @@ export function SimulationPage() {
               Simulasi dihentikan secara otomatis.
             </div>
             <div className="crash-vehicles">
-              <span>{crashInfo.between[0]?.toUpperCase()}</span>
+              <span>Vehicle {getVehicleLabelById(crashInfo.between[0], state?.vehicles ?? [])}</span>
               <span style={{ color: '#71717a' }}>↔</span>
-              <span>{crashInfo.between[1]?.toUpperCase()}</span>
+              <span>Vehicle {getVehicleLabelById(crashInfo.between[1], state?.vehicles ?? [])}</span>
               <span style={{ color: '#71717a', marginLeft: '0.5rem' }}>|</span>
               <span>Jarak: {crashInfo.gapMeters}m</span>
             </div>

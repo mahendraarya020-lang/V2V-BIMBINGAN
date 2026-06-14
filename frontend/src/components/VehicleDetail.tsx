@@ -1,6 +1,7 @@
 import type { VehicleState } from '../types/sim'
 import { formatSpeedMs } from '../utils/units'
 import { LightningIcon, RefreshIcon } from './Icons'
+import { getVehicleLabel } from '../utils/labels'
 
 type Props = {
   vehicle: VehicleState | null
@@ -42,11 +43,13 @@ export function VehicleDetail({ vehicle, vehicles = [], onSwap, onClose }: Props
   const activeLanes = Array.from(new Set(vehicles.map((v) => v.y))).sort((a, b) => a - b)
   const otherLanes = activeLanes.filter((l) => l !== vehicle.y)
 
+  const vehicleLabel = getVehicleLabel(vehicle, vehicles)
+
   return (
     <section className="vehicle-detail">
       <div className="vehicle-detail-head">
         <h4>
-          {vehicle.id.replace('b_', '').toUpperCase()}
+          Vehicle {vehicleLabel}
           {vehicle.crashed && <span style={{ color: 'var(--bad)', marginLeft: '0.4rem', fontSize: '0.8rem' }}>CRASHED</span>}
         </h4>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
